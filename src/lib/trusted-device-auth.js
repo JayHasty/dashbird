@@ -174,11 +174,29 @@ export function buildDeviceIdSetCookie(deviceId) {
   return parts.join('; ');
 }
 
+/** Drop a non-allowlisted did so the HTML shell can self-heal on the next paint. */
+export function buildClearDeviceIdSetCookie() {
+  return `${DEVICE_ID_COOKIE}=; Path=/; Secure; SameSite=Lax; Max-Age=0`;
+}
+
 export function trustedDeviceAuthRealm() {
   return readEnv('DASHBOARD_BASIC_AUTH_REALM') || 'Dashbird';
 }
 
+/**
+ * Document shell only — JS/CSS/API still gated. Needed so phones with a junk
+ * `dashbird_did` can load index.html and rewrite the cookie before asset fetches.
+ */
+export function isTrustedDeviceShellPath(path) {
+  const p = String(path || '').split('?')[0] || '';
+  return p === '/' || p === '/index.html';
+}
+
 export function isTrustedDeviceAuthExemptPath(path) {
   const p = String(path || '');
-  return p === '/api/trusted-device/auth' || p === '/auth/device-bind';
+  return (
+    p === '/api/trusted-device/auth' ||
+    p === '/auth/device-bind' ||
+    isTrustedDeviceShellPath(p)
+  );
 }

@@ -77,8 +77,17 @@
 	}
 
 	route {
+		# HTML shell must load even with a junk dashbird_did so the boot script
+		# can rewrite to the allowlisted phone id before JS/CSS fetches.
 		@device_bind path /auth/device-bind
+		@shell_doc {
+			method GET HEAD
+			path /
+		}
 		handle @device_bind {
+			reverse_proxy dashboard:3000
+		}
+		handle @shell_doc {
 			reverse_proxy dashboard:3000
 		}
 		handle {

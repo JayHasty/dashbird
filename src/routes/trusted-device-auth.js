@@ -4,11 +4,13 @@
  */
 import { Router } from 'express';
 import {
+  buildClearDeviceIdSetCookie,
   buildDeviceIdSetCookie,
   buildTrustedDeviceSetCookie,
   isAllowlistedDeviceId,
   isTrustedDeviceAuthEnabled,
   isTrustedDeviceAuthExemptPath,
+  isTrustedDeviceShellPath,
   parseDeviceIdFromCookie,
   trustedDeviceAuthRealm,
   verifyBasicAuthCredentials,
@@ -113,6 +115,22 @@ function renderDeviceBindPage(deviceId) {
 </html>`;
 }
 
+function forwardedRequestPath(req) {
+  const uri = String(req.headers['x-forwarded-uri'] || '');
+  if (uri) return uri.split('?')[0] || '/';
+  return String(req.path || '');
+}
+
+function forwardedMethod(req) {
+  return String(req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
+}
+
+function clearJunkDeviceIdCookie(res, deviceId) {
+  if (deviceId && !isAllowlistedDeviceId(deviceId)) {
+    res.append('Set-Cookie', buildClearDeviceIdSetCookie());
+  }
+}
+
 /** Caddy forward_auth subrequest — 2xx allows the original request through. */
 router.all('/auth', async (req, res) => {
   if (!isTrustedDeviceAuthEnabled()) {
@@ -129,6 +147,12 @@ router.all('/auth', async (req, res) => {
     res.status(200).end();
     return;
   }
+  const method = forwardedMethod(req);
+  if ((method === 'GET' || method === 'HEAD') && isTrustedDeviceShellPath(forwardedRequestPath(req))) {
+    clearJunkDeviceIdCookie(res, deviceId);
+    res.status(200).end();
+    return;
+  }
   const authHeader = req.headers.authorization || req.headers['x-forwarded-authorization'];
   if (await verifyBasicAuthCredentials(authHeader)) {
     if (isAllowlistedDeviceId(deviceId)) {
@@ -137,6 +161,7 @@ router.all('/auth', async (req, res) => {
     res.status(200).end();
     return;
   }
+  clearJunkDeviceIdCookie(res, deviceId);
   sendUnauthorized(res);
 });
 
@@ -147,6 +172,8 @@ export function trustedDeviceGateMiddleware() {
       return;
     }
     if (isTrustedDeviceAuthExemptPath(req.path)) {
+      const deviceId = parseDeviceIdFromCookie(req.headers.cookie);
+      clearJunkDeviceIdCookie(res, deviceId);
       next();
       return;
     }
@@ -168,6 +195,7 @@ export function trustedDeviceGateMiddleware() {
       next();
       return;
     }
+    clearJunkDeviceIdCookie(res, deviceId);
     sendUnauthorized(res);
   };
 }
