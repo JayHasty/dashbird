@@ -250,13 +250,26 @@ async function mountDeferredPanels(config) {
   markDeferredReady();
 }
 
+const PHONE_TRUSTED_DID = '1c0c1947-ad36-4032-aed5-00eb5b28e166';
+
 /** Lean phone boot: view toggle + Network/Events shell only. */
 async function mainMobile() {
   document.body.classList.add('dashy--view-mobile');
 
+  /* Cloud: if session is still 401 after did self-heal, send phone to bind once. */
+  try {
+    const probe = await fetch('/api/config', { cache: 'no-store', credentials: 'same-origin' });
+    if (probe.status === 401 && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      location.replace(`/auth/device-bind?did=${PHONE_TRUSTED_DID}`);
+      return;
+    }
+  } catch {
+    /* continue — shell may still load on LAN */
+  }
+
   const [{ mountViewModeToggle }, { mountMobileShell }] = await Promise.all([
     import('./panels/view-mode-toggle.js'),
-    import('./panels/mobile-shell.js?v=mobile-panels-20260808-phone-boot-1'),
+    import('./panels/mobile-shell.js?v=mobile-panels-20260809-did-heal-1'),
   ]);
 
   mountViewModeToggle(document.getElementById('mount-view-mode'));

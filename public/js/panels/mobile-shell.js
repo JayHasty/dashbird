@@ -8,7 +8,9 @@ import {
 
 const MOBILE_TAB_KEY = 'dashbirdMobileTab';
 /** Bump when any mobile panel module changes (cache-bust dynamic imports). */
-const MOBILE_PANELS_V = 'mobile-panels-20260809-schedule-in-detail-1';
+const MOBILE_PANELS_V = 'mobile-panels-20260809-did-heal-1';
+const PHONE_TRUSTED_DID = '1c0c1947-ad36-4032-aed5-00eb5b28e166';
+const PHONE_DEVICE_BIND = `/auth/device-bind?did=${PHONE_TRUSTED_DID}`;
 
 /**
  * @param {unknown} err
@@ -22,9 +24,11 @@ async function describeModuleImportError(err, moduleUrl) {
   try {
     const r = await fetch(moduleUrl, { credentials: 'same-origin', cache: 'no-store' });
     if (!r.ok) {
-      detail += r.status === 401
-        ? ' — session expired; open /auth/device-bind on this phone'
-        : ` — server returned HTTP ${r.status}`;
+      if (r.status === 401) {
+        detail += ` — session expired; open ${PHONE_DEVICE_BIND}`;
+        return detail;
+      }
+      detail += ` — server returned HTTP ${r.status}`;
       return detail;
     }
     const ct = String(r.headers.get('content-type') || '').toLowerCase();
@@ -169,6 +173,31 @@ export function mountMobileShell(mounts = {}) {
     groupsRoot.hidden = tab !== 'groups';
   }
 
+  /**
+   * @param {HTMLElement} statusEl
+   * @param {string} label
+   * @param {unknown} err
+   * @param {string} [moduleUrl]
+   */
+  async function showPanelLoadError(statusEl, label, err, moduleUrl) {
+    const detail = moduleUrl
+      ? await describeModuleImportError(err, moduleUrl)
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    statusEl.replaceChildren();
+    statusEl.append(`${label} failed: ${detail}`);
+    if (detail.includes('session expired') || detail.includes('401')) {
+      statusEl.append(document.createElement('br'));
+      const a = document.createElement('a');
+      a.href = PHONE_DEVICE_BIND;
+      a.textContent = 'Re-trust this phone';
+      a.style.color = 'inherit';
+      a.style.textDecoration = 'underline';
+      statusEl.append(a);
+    }
+  }
+
   async function ensureNotes() {
     if (notesMounted) return;
     notesMounted = true;
@@ -177,12 +206,13 @@ export function mountMobileShell(mounts = {}) {
     status.className = 'mobile-shell__status';
     status.textContent = 'Loading notes…';
     notesRoot.append(status);
+    const notesUrl = new URL(`./keep-notes.js?v=${MOBILE_PANELS_V}`, import.meta.url).href;
     try {
-      const { mountKeepNotes } = await import(`./keep-notes.js?v=${MOBILE_PANELS_V}`);
+      const { mountKeepNotes } = await import(notesUrl);
       notesRoot.replaceChildren();
       mountKeepNotes(notesRoot);
     } catch (e) {
-      status.textContent = `Notes failed: ${e?.message || e}`;
+      await showPanelLoadError(status, 'Notes', e, notesUrl);
       notesMounted = false;
     }
   }

@@ -13,9 +13,13 @@
         try {
           /* Cloud trusted-device: mirror local device ID to cookie before any fetch.
              Never invent a random did — a non-allowlisted id forces bcrypt basic-auth
-             on every asset and stalls Firefox Android ~10–15s per file. */
+             on every asset and stalls Firefox Android ~10–15s per file.
+             Phones self-heal to the allowlisted cell-phone id (junk UUIDs from older
+             builds are replaced so forward_auth can mint dashbird_trusted again). */
           (function syncDid() {
             var key = 'dashbird_did';
+            var PHONE_DID = '1c0c1947-ad36-4032-aed5-00eb5b28e166';
+            var LAPTOP_DID = 'edd37155-3ffe-4d18-a775-d6cdcedbf343';
             var id = '';
             var m = document.cookie.match(new RegExp('(?:^|;\\s*)' + key + '=([^;]*)'));
             if (m) {
@@ -29,6 +33,20 @@
               try {
                 id = String(localStorage.getItem(key) || '').trim();
               } catch (e) {}
+            }
+            id = String(id || '').trim().toLowerCase();
+            var uaEarly = String(navigator.userAgent || '');
+            var phoneEarly =
+              /Android|iPhone|iPod|iPad|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(uaEarly);
+            var allowed = id === PHONE_DID || id === LAPTOP_DID;
+            if (phoneEarly) {
+              if (!allowed) id = PHONE_DID;
+            } else if (id && !allowed) {
+              try {
+                localStorage.removeItem(key);
+              } catch (eClr) {}
+              document.cookie = key + '=; Path=/; Max-Age=0; SameSite=Lax';
+              return;
             }
             if (!id) return;
             try {
@@ -62,7 +80,7 @@
             document.documentElement.classList.add('dashbird-view-mobile');
             var mobileModulePreloads = [
               '/js/panels/events-filter-ui.js?v=events-filter-ui-20260805-1',
-              '/js/panels/events-finder-mobile.js?v=mobile-panels-20260808-phone-boot-1',
+              '/js/panels/events-finder-mobile.js?v=mobile-panels-20260809-did-heal-1',
             ];
             for (var mi = 0; mi < mobileModulePreloads.length; mi++) {
               var mpl = document.createElement('link');
@@ -101,7 +119,7 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=phone-cloud-boot-20260808" />
+    <link rel="stylesheet" href="/styles.css?v=phone-did-heal-20260809" />
     <!-- Instant search: no modules — Enter opens a new tab before app.js loads. -->
     <script>
       window.__dashbirdSearch = (function () {
@@ -738,6 +756,6 @@
       </section>
     </div>
     </div>
-    <script type="module" src="/js/app.js?v=phone-cloud-boot-20260808"></script>
+    <script type="module" src="/js/app.js?v=phone-did-heal-20260809"></script>
   </body>
 </html>
