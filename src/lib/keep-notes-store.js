@@ -10,8 +10,129 @@ import { fileURLToPath } from 'node:url';
 const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const KEEP_NOTES_ROOT = path.join(PKG_ROOT, 'data', 'keep-notes');
 
+/** Seeded note collections (stored as `category`) — always available; custom ones persist in categories.json. */
+export const KEEP_NOTE_SEED_CATEGORIES = [
+  'recommendations',
+  'music',
+  'biz ideas',
+  'feature requests',
+  'gym notes',
+  'logistics notes',
+];
+const CATEGORY_MAX_LEN = 48;
+
 const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const VOICE_MIMES = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav']);
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function normalizeKeepNoteCategory(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, CATEGORY_MAX_LEN);
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+function categoriesFilePath(env = process.env) {
+  return path.join(keepNotesRoot(env), 'categories.json');
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {Promise<string[]>}
+ */
+async function readCustomCategories(env = process.env) {
+  try {
+    const raw = JSON.parse(await readFile(categoriesFilePath(env), 'utf8'));
+    const list = Array.isArray(raw?.categories) ? raw.categories : Array.isArray(raw) ? raw : [];
+    /** @type {string[]} */
+    const out = [];
+    const seen = new Set();
+    for (const item of list) {
+      const cat = normalizeKeepNoteCategory(item);
+      if (!cat) continue;
+      const key = cat.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(cat);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * @param {string[]} categories
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+async function writeCustomCategories(categories, env = process.env) {
+  const root = keepNotesRoot(env);
+  await mkdir(root, { recursive: true });
+  const cleaned = [];
+  const seen = new Set();
+  for (const item of categories) {
+    const cat = normalizeKeepNoteCategory(item);
+    if (!cat) continue;
+    const key = cat.toLowerCase();
+    if (seen.has(key)) continue;
+    if (KEEP_NOTE_SEED_CATEGORIES.some((s) => s.toLowerCase() === key)) continue;
+    seen.add(key);
+    cleaned.push(cat);
+  }
+  await writeFile(
+    categoriesFilePath(env),
+    `${JSON.stringify({ categories: cleaned }, null, 2)}\n`,
+    'utf8',
+  );
+  return cleaned;
+}
+
+/**
+ * Persist a newly typed category (skips empty / already-seeded).
+ * @param {string} category
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export async function rememberKeepNoteCategory(category, env = process.env) {
+  const cat = normalizeKeepNoteCategory(category);
+  if (!cat) return listKeepNoteCategories(env);
+  const custom = await readCustomCategories(env);
+  const key = cat.toLowerCase();
+  if (KEEP_NOTE_SEED_CATEGORIES.some((s) => s.toLowerCase() === key)) {
+    return listKeepNoteCategories(env);
+  }
+  if (!custom.some((c) => c.toLowerCase() === key)) {
+    await writeCustomCategories([...custom, cat], env);
+  }
+  return listKeepNoteCategories(env);
+}
+
+/**
+ * Seeded + custom + any categories already used on notes.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {Promise<string[]>}
+ */
+export async function listKeepNoteCategories(env = process.env) {
+  const custom = await readCustomCategories(env);
+  const notes = await listKeepNotesRaw(env);
+  /** @type {string[]} */
+  const out = [];
+  const seen = new Set();
+  for (const item of [...KEEP_NOTE_SEED_CATEGORIES, ...custom, ...notes.map((n) => n.category)]) {
+    const cat = normalizeKeepNoteCategory(item);
+    if (!cat) continue;
+    const key = cat.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(cat);
+  }
+  return out;
+}
 
 /**
  * @param {NodeJS.ProcessEnv} [env]
@@ -76,6 +197,7 @@ async function readNoteFromDir(dir) {
     id,
     title: String(meta.title || ''),
     body,
+    category: normalizeKeepNoteCategory(meta.category),
     pinned: Boolean(meta.pinned),
     archived: Boolean(meta.archived),
     sortOrder: typeof meta.sortOrder === 'number' && Number.isFinite(meta.sortOrder) ? meta.sortOrder : null,
@@ -189,7 +311,7 @@ export function splitKeepNoteTitleBody(text) {
 }
 
 /**
- * @param {{ title?: string, body?: string, pinned?: boolean }} input
+ * @param {{ title?: string, body?: string, pinned?: boolean, category?: string }} input
  * @param {NodeJS.ProcessEnv} [env]
  */
 export async function createKeepNote(input = {}, env = process.env) {
@@ -198,6 +320,8 @@ export async function createKeepNote(input = {}, env = process.env) {
   const dir = noteDir(id, env);
   await mkdir(dir, { recursive: true });
   const pinned = Boolean(input.pinned);
+  const category = normalizeKeepNoteCategory(input.category);
+  if (category) await rememberKeepNoteCategory(category, env);
   const siblings = (await listKeepNotesRaw(env)).filter((n) => n.pinned === pinned);
   const minOrder = siblings.reduce(
     (m, n) => Math.min(m, typeof n.sortOrder === 'number' ? n.sortOrder : 0),
@@ -206,6 +330,7 @@ export async function createKeepNote(input = {}, env = process.env) {
   const meta = {
     id,
     title: String(input.title || '').trim(),
+    category,
     pinned,
     archived: false,
     sortOrder: siblings.length ? minOrder - 1 : 0,
@@ -221,7 +346,7 @@ export async function createKeepNote(input = {}, env = process.env) {
 
 /**
  * @param {string} id
- * @param {{ title?: string, body?: string, pinned?: boolean, archived?: boolean }} patch
+ * @param {{ title?: string, body?: string, pinned?: boolean, archived?: boolean, category?: string }} patch
  * @param {NodeJS.ProcessEnv} [env]
  */
 export async function updateKeepNote(id, patch = {}, env = process.env) {
@@ -244,6 +369,11 @@ export async function updateKeepNote(id, patch = {}, env = process.env) {
   }
   const now = new Date().toISOString();
   if (patch.title !== undefined) meta.title = String(patch.title || '').trim();
+  if (patch.category !== undefined) {
+    const category = normalizeKeepNoteCategory(patch.category);
+    meta.category = category;
+    if (category) await rememberKeepNoteCategory(category, env);
+  }
   if (patch.pinned !== undefined) {
     const nextPinned = Boolean(patch.pinned);
     if (nextPinned !== Boolean(existing.pinned)) {

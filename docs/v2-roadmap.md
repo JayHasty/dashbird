@@ -21,7 +21,7 @@ Cross-reference: v1 ships the dashboard shell and core panels; v2 items mount in
 
 - **Server:** `/api/vikunja/*` same-origin proxy (`VIKUNJA_BASE_URL` + `VIKUNJA_TOKEN` in server env only). Panel helpers: `GET/POST /api/vikunja/todos`, `PATCH .../done|undo`. Fail closed when unset. `VIKUNJA_PROJECT_ID` scopes the Today Todo panel (required).
 - **Local stack:** `docker-compose.yml` includes a `vikunja` service (SQLite under `data/vikunja/`, UI on port `3456`). Bootstrap credentials live in `data/vikunja/credentials.txt` (gitignored).
-- **Client:** Today’s To Do sidebar uses Vikunja (open tasks, add, complete). Local CSV `/api/todolist` removed. Subtasks / drag-and-drop deferred.
+- **Client:** Today’s To Do sidebar uses Vikunja (open tasks, add, complete). Local CSV `/api/todolist` removed. Desktop subtasks MVP is live (edit dialog); drag-and-drop / mobile subtasks still deferred.
 
 ### 2. Google Keep snippets
 
@@ -54,7 +54,19 @@ Cross-reference: v1 ships the dashboard shell and core panels; v2 items mount in
 - **Fields:** people, notes, last contact, tags, org/title, channels, enrichment.
 - **Ingest:** Telegram classifier routes contact/company messages and CRM photos (business cards, LinkedIn/social screenshots, headshots, logos) into Network (same bot as events; distinct destination).
 
-### 7. Optional expansions (v2 or later)
+### 7. Life goals / refocus panel
+
+- **UI:** desktop panel for personal life goals (CRUD) + a periodic refocus/review surface (weekly cadence default).
+- **Storage:** small JSON store + `/api/life-goals` (same pattern as other local panels).
+- **Deferred from:** dev request `73bd04ba` (parked here instead of shipping in v1).
+
+### 8. Gym buddy
+
+- **UI:** desktop panel to log workouts (exercise / weight / time), derate suggested load after training gaps, suggest next session with simple diagrams.
+- **Storage:** local workout log + `/api/gym-buddy`; no paid fitness APIs.
+- **Deferred from:** dev request `aea0edb5` (parked here instead of shipping in v1).
+
+### 9. Optional expansions (v2 or later)
 
 - **Home Assistant REST proxy** — `/api/home-assistant/*` with long-lived token in env.
 - **Optional assistant controls** — tier → model map, spend caps, optional LiteLLM/Bifrost upstream.

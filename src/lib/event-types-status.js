@@ -10,8 +10,6 @@ import {
   snapshotNakedEyePlanets,
 } from './naked-eye-planets.js';
 import { sortSkyStripWithPlanetsFirst } from './sky-strip-order.js';
-import { mergeAnnularEclipseLiveRows } from './merge-annular-eclipse-live.js';
-import { fetchNextLandAnnularWithinSixMonths } from './nasa-annular-eclipse-live.js';
 import {
   buildEarthAndMoonbowEventTypes,
   buildEarthEventTypesSlow,
@@ -23,6 +21,7 @@ import { filterSightingHeadsUp, mergeSightingHeadsUp, sightingTypeStatusValue } 
 import { NIGHTLY_SIGHTING_TYPES } from './sky-sighting-night.js';
 import { mergeAircraftNearby } from './merge-aircraft-nearby.js';
 import { snapshotAircraftNearby } from './aircraft-nearby.js';
+import { mergeEclipseHeadsUp } from './sky-eclipse-heads-up.js';
 
 const HERO_TZ = 'America/Los_Angeles';
 
@@ -124,7 +123,7 @@ async function runSkyStripPipeline(now, windowMs) {
   active = await mergeGeomagneticStormGScale(active, now, windowMs);
   active = await mergeAuroraWithSwpc(active, lat, lon, now, windowMs, HERO_TZ, locationLabel);
   active = mergeNakedEyePlanetsWithComputed(active, lat, lon, now, windowMs, HERO_TZ);
-  active = await mergeAnnularEclipseLiveRows(active, now);
+  active = mergeEclipseHeadsUp(active, data.events, now, windowMs);
   active = mergeSightingHeadsUp(active, data.events, now, windowMs, HERO_TZ, geo);
   active = await mergeAircraftNearby(active, now);
   active = sortSkyStripWithPlanetsFirst(active);
@@ -152,31 +151,16 @@ async function buildSkyTypeRows({ data, active, lat, lon, zip, locationLabel, no
     activeByType.set(row.type, list);
   }
 
-  const [geomSnap, auroraSnap, annularNext, aircraftSnap] = await Promise.all([
+  const [geomSnap, auroraSnap, aircraftSnap] = await Promise.all([
     snapshotGeomagneticLive(now, windowMs),
     snapshotAuroraLive(lat, lon),
-    (async () => {
-      if (String(process.env.SKY_ANNULAR_ECLIPSE_NASA || '').trim() === '0') {
-        return { disabled: true, value: 'Disabled (SKY_ANNULAR_ECLIPSE_NASA=0)' };
-      }
-      try {
-        const best = await fetchNextLandAnnularWithinSixMonths(now);
-        if (!best) return { value: 'No land annular eclipse in next ~6 months' };
-        const when = new Date(best.greatestMs).toISOString().slice(0, 16).replace('T', ' ');
-        return {
-          value: `${best.title} · greatest ${when} UTC · ${best.topSpots.join(' · ')}`,
-        };
-      } catch (err) {
-        return { value: `Unavailable (${err?.message || err})` };
-      }
-    })(),
     snapshotAircraftNearby(now),
   ]);
 
   const planetSnap = snapshotNakedEyePlanets(lat, lon, now, windowMs, HERO_TZ);
 
   return (data.eventTypes || [])
-    .filter((et) => et.id !== 'rainbow')
+    .filter((et) => et.id !== 'rainbow' && et.id !== 'annular_eclipse_world')
     .map((et) => {
       const id = et.id;
       const label = et.label || id;
@@ -211,8 +195,6 @@ async function buildSkyTypeRows({ data, active, lat, lon, zip, locationLabel, no
         value = auroraSnap.value;
       } else if (id === 'planet') {
         value = planetSnap.value;
-      } else if (id === 'annular_eclipse_world') {
-        value = annularNext.value;
       } else if (id === 'supermoon') {
         value = supermoonValue(data.events, now, HERO_TZ);
       } else if (id === 'aircraft') {

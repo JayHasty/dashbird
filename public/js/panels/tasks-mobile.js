@@ -359,6 +359,11 @@ export function mountTasksMobile(root, config = {}) {
   const moveTagAddBtn = document.createElement('button');
   moveTagAddBtn.type = 'button';
 
+  const moveScheduleSlot = document.createElement('div');
+  moveScheduleSlot.className = 'mobile-tasks__move-schedule';
+  const moveWaitingSlot = document.createElement('div');
+  moveWaitingSlot.className = 'mobile-tasks__move-waiting';
+
   const moveEditTagsBtn = document.createElement('button');
   moveEditTagsBtn.type = 'button';
   moveEditTagsBtn.className = 'mobile-tasks__move-edit-tags';
@@ -382,6 +387,8 @@ export function mountTasksMobile(root, config = {}) {
   moveOverlay.append(
     moveRenameLabel,
     moveProjectLabel,
+    moveScheduleSlot,
+    moveWaitingSlot,
     moveEditTagsBtn,
     moveActions,
   );
@@ -815,6 +822,55 @@ export function mountTasksMobile(root, config = {}) {
 
     moveEditTagsBtn.onclick = () => openEditTagsForTask(taskId);
 
+    const taskMeta = taskRandomMeta.byTaskId?.[String(taskId)] || null;
+    moveScheduleSlot.replaceChildren();
+    moveWaitingSlot.replaceChildren();
+    const sched = createScheduleControl({
+      wrapClass: 'task-schedule mobile-tasks__move-schedule-wrap',
+      buttonClass: 'mobile-tasks__schedule mobile-tasks__move-schedule-btn',
+      overdueClass: 'task-schedule__overdue',
+    });
+    sched.sync(taskMeta);
+    sched.button.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      sched.button.disabled = true;
+      try {
+        const title =
+          moveRenameInput.value.trim() ||
+          items.find((it) => it.id === taskId)?.text ||
+          '';
+        const currentMeta = taskRandomMeta.byTaskId?.[String(taskId)] || null;
+        const { meta, row: nextMeta } = await scheduleTaskToCalendar(
+          taskId,
+          title,
+          currentMeta,
+        );
+        taskRandomMeta = meta;
+        sched.sync(nextMeta);
+      } catch {
+        showStatus('Could not save schedule.', true);
+      } finally {
+        sched.button.disabled = false;
+      }
+    });
+    moveScheduleSlot.append(sched.wrap);
+    const waiting = createWaitingOnControl({
+      taskId,
+      waitingOn: taskMeta?.waitingOn === true,
+      wrapClass: 'mobile-tasks__waiting mobile-tasks__move-waiting-control',
+      checkClass: 'mobile-tasks__waiting-check',
+      onMetaChange: (meta) => {
+        taskRandomMeta = meta;
+      },
+    });
+    moveWaitingSlot.append(waiting.wrap);
+    void ensureOverduePriority(taskId, taskMeta).then((res) => {
+      if (!res || editTaskId !== taskId) return;
+      taskRandomMeta = res.meta;
+      sched.sync(res.row);
+    });
+
     moveOverlay.hidden = false;
     root.classList.add('mobile-tasks--moving');
     if (!isMobileNavApplying() && projectId != null) {
@@ -1210,47 +1266,6 @@ export function mountTasksMobile(root, config = {}) {
     row.append(label);
 
     if (canDrag) {
-      const taskMeta = taskRandomMeta.byTaskId?.[String(item.id)] || null;
-      const waiting = createWaitingOnControl({
-        taskId: item.id,
-        waitingOn: taskMeta?.waitingOn === true,
-        wrapClass: 'mobile-tasks__waiting',
-        checkClass: 'mobile-tasks__waiting-check',
-        onMetaChange: (meta) => {
-          taskRandomMeta = meta;
-        },
-      });
-      row.append(waiting.wrap);
-      const sched = createScheduleControl({
-        wrapClass: 'task-schedule mobile-tasks__schedule-wrap',
-        buttonClass: 'mobile-tasks__schedule',
-        overdueClass: 'task-schedule__overdue',
-      });
-      sched.sync(taskMeta);
-      sched.button.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        sched.button.disabled = true;
-        try {
-          const { meta, row: nextMeta } = await scheduleTaskToCalendar(
-            item.id,
-            item.text,
-            taskMeta,
-          );
-          taskRandomMeta = meta;
-          sched.sync(nextMeta);
-        } catch {
-          showStatus('Could not save schedule.', true);
-        } finally {
-          sched.button.disabled = false;
-        }
-      });
-      row.append(sched.wrap);
-      void ensureOverduePriority(item.id, taskMeta).then((res) => {
-        if (!res) return;
-        taskRandomMeta = res.meta;
-        sched.sync(res.row);
-      });
       attachTaskLongPress(li, item.id, () => showMoveOverlay(item.id));
     }
 

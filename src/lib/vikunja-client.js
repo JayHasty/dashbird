@@ -115,7 +115,17 @@ export function resolveVikunjaConfig(env = process.env) {
 
 /**
  * @param {unknown} task
- * @returns {{ id: string, text: string, done: boolean, projectId: number | null } | null}
+ * @returns {boolean}
+ */
+export function vikunjaTaskIsSubtask(task) {
+  if (!task || typeof task !== 'object') return false;
+  const parents = task.related_tasks?.parenttask;
+  return Array.isArray(parents) && parents.length > 0;
+}
+
+/**
+ * @param {unknown} task
+ * @returns {{ id: string, text: string, done: boolean, projectId: number | null, isSubtask?: boolean, subtaskCount?: number } | null}
  */
 export function mapVikunjaTask(task) {
   if (!task || typeof task !== 'object') return null;
@@ -126,11 +136,15 @@ export function mapVikunjaTask(task) {
     task.project_id != null && Number.isFinite(Number(task.project_id))
       ? Number(task.project_id)
       : null;
+  const subtasks = task.related_tasks?.subtask;
+  const subtaskCount = Array.isArray(subtasks) ? subtasks.length : 0;
   return {
     id,
     text,
     done: Boolean(task.done),
     projectId,
+    isSubtask: vikunjaTaskIsSubtask(task),
+    subtaskCount,
   };
 }
 
@@ -656,9 +670,13 @@ export async function listPanelTodos(env = process.env, opts = {}) {
     }
 
     const rows = Array.isArray(res.json) ? res.json : [];
-    const mapped = rows.map(mapVikunjaTask).filter(Boolean);
+    // Hide open subtasks from the top-level project list; they live under the parent.
+    const mapped = rows
+      .filter((row) => !vikunjaTaskIsSubtask(row))
+      .map(mapVikunjaTask)
+      .filter(Boolean);
     all.push(...mapped);
-    if (mapped.length < PANEL_TODOS_PER_PAGE) break;
+    if (rows.length < PANEL_TODOS_PER_PAGE) break;
   }
   return all;
 }
@@ -947,6 +965,155 @@ export async function updatePanelTodoText(id, text, env = process.env) {
     err.status = 502;
     throw err;
   }
+  return item;
+}
+
+/**
+ * @param {string} id
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+async function fetchVikunjaTaskRaw(id, env = process.env) {
+  const taskId = String(id || '').trim();
+  if (!/^\d+$/.test(taskId)) {
+    const err = new Error('invalid_id');
+    err.code = 'invalid_id';
+    err.status = 400;
+    throw err;
+  }
+  const getRes = await vikunjaFetch(`tasks/${taskId}`, { env });
+  if (getRes.status === 404) {
+    const err = new Error('not_found');
+    err.code = 'not_found';
+    err.status = 404;
+    throw err;
+  }
+  if (!getRes.ok || !getRes.json || typeof getRes.json !== 'object') {
+    const err = new Error(safeUpstreamMessage(getRes) || 'vikunja_get_failed');
+    err.code = 'vikunja_upstream';
+    err.status = getRes.status >= 400 && getRes.status < 600 ? getRes.status : 502;
+    throw err;
+  }
+  return { taskId, raw: getRes.json };
+}
+
+/**
+ * List Vikunja subtasks linked to a parent (includes done).
+ * @param {string} parentId
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {Promise<Array<{ id: string, text: string, done: boolean, projectId: number | null }>>}
+ */
+export async function listPanelSubtasks(parentId, env = process.env) {
+  const { raw } = await fetchVikunjaTaskRaw(parentId, env);
+  const rows = Array.isArray(raw?.related_tasks?.subtask) ? raw.related_tasks.subtask : [];
+  return rows.map(mapVikunjaTask).filter(Boolean);
+}
+
+/**
+ * Scoped API tokens need `tasks_relations` for subtask links. Older Dashbird tokens
+ * only had `tasks` — grant create/delete locally when missing (same DB path as default-project fix).
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {boolean} true if permissions were changed
+ */
+function ensureVikunjaApiTokenRelationPermissions(env = process.env) {
+  const dbPath = resolveVikunjaDbPath(env);
+  if (!existsSync(dbPath)) return false;
+  const db = new DatabaseSync(dbPath);
+  try {
+    const rows = db.prepare('SELECT id, permissions FROM api_tokens').all();
+    let changed = false;
+    const update = db.prepare('UPDATE api_tokens SET permissions = ? WHERE id = ?');
+    for (const row of rows) {
+      let perms;
+      try {
+        perms = JSON.parse(String(row.permissions || '{}'));
+      } catch {
+        continue;
+      }
+      if (!perms || typeof perms !== 'object') continue;
+      const existing = Array.isArray(perms.tasks_relations) ? perms.tasks_relations : [];
+      const needCreate = !existing.includes('create');
+      const needDelete = !existing.includes('delete');
+      if (!needCreate && !needDelete) continue;
+      const next = new Set(existing);
+      next.add('create');
+      next.add('delete');
+      perms.tasks_relations = [...next];
+      update.run(JSON.stringify(perms), row.id);
+      changed = true;
+    }
+    return changed;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * @param {string} parentTaskId
+ * @param {number} childId
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+async function linkPanelSubtaskRelation(parentTaskId, childId, env = process.env) {
+  const body = {
+    other_task_id: childId,
+    relation_kind: 'subtask',
+  };
+  let relRes = await vikunjaFetch(`tasks/${parentTaskId}/relations`, {
+    method: 'PUT',
+    body,
+    env,
+  });
+  if (relRes.status === 401 && ensureVikunjaApiTokenRelationPermissions(env)) {
+    relRes = await vikunjaFetch(`tasks/${parentTaskId}/relations`, {
+      method: 'PUT',
+      body,
+      env,
+    });
+  }
+  return relRes;
+}
+
+/**
+ * Create a task in the parent's project and link it as a Vikunja subtask.
+ * @param {string} parentId
+ * @param {string} title
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export async function createPanelSubtask(parentId, title, env = process.env) {
+  const { taskId: parentTaskId, raw: parent } = await fetchVikunjaTaskRaw(parentId, env);
+  const projectId =
+    parent.project_id != null && Number.isFinite(Number(parent.project_id))
+      ? Number(parent.project_id)
+      : null;
+  if (projectId == null) {
+    const err = new Error('vikunja_project_required');
+    err.code = 'vikunja_project_required';
+    err.status = 503;
+    throw err;
+  }
+
+  const item = await createPanelTodo(title, env, { projectId });
+  const childId = Number(item.id);
+  if (!Number.isFinite(childId) || childId <= 0) {
+    const err = new Error('vikunja_create_failed');
+    err.code = 'vikunja_upstream';
+    err.status = 502;
+    throw err;
+  }
+
+  const relRes = await linkPanelSubtaskRelation(parentTaskId, childId, env);
+  if (!relRes.ok) {
+    // Avoid orphan open tasks if the relation link fails.
+    try {
+      await vikunjaFetch(`tasks/${childId}`, { method: 'DELETE', env });
+    } catch {
+      /* best-effort cleanup */
+    }
+    const err = new Error(safeUpstreamMessage(relRes) || 'vikunja_relation_failed');
+    err.code = 'vikunja_upstream';
+    err.status = relRes.status >= 400 && relRes.status < 600 ? relRes.status : 502;
+    throw err;
+  }
+
   return item;
 }
 

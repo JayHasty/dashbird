@@ -66,6 +66,7 @@ function compactContact(c) {
     aliases: c.aliases || [],
     kinds: c.kinds || [],
     hasKids: Boolean(c.hasKids),
+    kidsBirthYears: Array.isArray(c.kidsBirthYears) ? c.kidsBirthYears : [],
     org: c.org || null,
     title: c.title || null,
     location: c.location || null,

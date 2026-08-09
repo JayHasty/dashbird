@@ -89,7 +89,7 @@ docker compose down   # local LAN stack, optional
 CLOUD_HOST=root@YOUR_VULTR_IP SYNC_DATA=1 ./scripts/sync-to-cloud.sh
 ```
 
-This rsyncs `data/` (tools, network DB, events, assets), personal `public/data/*`, and `.env`, then rebuilds.
+This rsyncs `data/` (tools, network DB, events, assets — **not** Keep Notes / `keep-import`), personal `public/data/*`, and `.env`, then rebuilds. Keep Notes stay local to each host.
 
 Smoke checklist:
 

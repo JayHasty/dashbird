@@ -11,7 +11,9 @@
     <script>
       (function () {
         try {
-          /* Cloud trusted-device: mirror local device ID to cookie before any fetch. */
+          /* Cloud trusted-device: mirror local device ID to cookie before any fetch.
+             Never invent a random did — a non-allowlisted id forces bcrypt basic-auth
+             on every asset and stalls Firefox Android ~10–15s per file. */
           (function syncDid() {
             var key = 'dashbird_did';
             var id = '';
@@ -28,7 +30,6 @@
                 id = String(localStorage.getItem(key) || '').trim();
               } catch (e) {}
             }
-            if (!id && window.crypto && crypto.randomUUID) id = crypto.randomUUID();
             if (!id) return;
             try {
               localStorage.setItem(key, id);
@@ -40,22 +41,28 @@
           if (localStorage.getItem('dashbird-sky-sidebar-hidden') === '1') {
             document.documentElement.classList.add('sky-sidebar-hidden');
           }
-          var stored = localStorage.getItem('dashbirdView');
-          var view = stored;
-          var phone = false;
-          if (view !== 'mobile' && view !== 'desktop') {
-            var ua = String(navigator.userAgent || '');
-            phone = /Android|iPhone|iPod|iPad|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
-            if (!phone && window.matchMedia) {
-              phone = window.matchMedia('(max-width: 820px)').matches;
-            }
-            view = phone ? 'mobile' : 'desktop';
+          var ua = String(navigator.userAgent || '');
+          var phone = /Android|iPhone|iPod|iPad|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+          if (!phone && window.matchMedia) {
+            phone = window.matchMedia('(max-width: 820px)').matches;
+          }
+          /* Phones always use the lean mobile shell — a stuck dashbirdView=desktop
+             boot loads bookmarks/calendar and stalls hard on cloud auth. */
+          var stored = null;
+          try {
+            stored = localStorage.getItem('dashbirdView');
+          } catch (eView) {}
+          var view = phone ? 'mobile' : stored === 'mobile' || stored === 'desktop' ? stored : 'desktop';
+          if (phone && stored === 'desktop') {
+            try {
+              localStorage.setItem('dashbirdView', 'mobile');
+            } catch (eFix) {}
           }
           if (view === 'mobile') {
             document.documentElement.classList.add('dashbird-view-mobile');
             var mobileModulePreloads = [
               '/js/panels/events-filter-ui.js?v=events-filter-ui-20260805-1',
-              '/js/panels/events-finder-mobile.js?v=mobile-panels-20260805-events-1',
+              '/js/panels/events-finder-mobile.js?v=mobile-panels-20260808-phone-boot-1',
             ];
             for (var mi = 0; mi < mobileModulePreloads.length; mi++) {
               var mpl = document.createElement('link');
@@ -94,7 +101,7 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=mobile-panels-20260719-3" />
+    <link rel="stylesheet" href="/styles.css?v=phone-cloud-boot-20260808" />
     <!-- Instant search: no modules — Enter opens a new tab before app.js loads. -->
     <script>
       window.__dashbirdSearch = (function () {
@@ -731,6 +738,6 @@
       </section>
     </div>
     </div>
-    <script type="module" src="/js/app.js?v=bookmarks-collapse-projects-20260805"></script>
+    <script type="module" src="/js/app.js?v=phone-cloud-boot-20260808"></script>
   </body>
 </html>

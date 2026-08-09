@@ -32,7 +32,7 @@ Scope: `docker-compose*.yml`, `deploy/`, `scripts/`, `src/lib/data-backup-schedu
    - Config via `.env` (`DATA_BACKUP_*`); both default **on**.
 2. **Cloud shell script** (`scripts/cloud-backup.sh`) intended to run on the VPS **via cron** (`15 3 * * *`) → `/var/backups/dashbird/dashbird-data-*.tar.gz`, `KEEP_DAYS=14`. Uses `sqlite3 .backup` to make `.bak` copies, then tars `data/`. This is a **separate, manually-installed** mechanism from the in-app scheduler.
 
-**Off-host / sync:** `scripts/sync-to-cloud.sh` and `sync-from-cloud.sh` rsync between LAN and cloud, but `data/` is **excluded unless `SYNC_DATA=1`** is set explicitly. These are manual, human-triggered.
+**Off-host / sync:** `scripts/sync-to-cloud.sh` and `sync-from-cloud.sh` rsync between LAN and cloud, but `data/` is **excluded unless `SYNC_DATA=1`** is set explicitly. Even with `SYNC_DATA=1`, **Keep Notes** (`data/keep-notes/`, `data/keep-import/`) are never synced — each host keeps its own. These are manual, human-triggered.
 
 **Rollback / restore:**
 - Weekly CRM + tools: `node scripts/restore-tools-contacts-backup.mjs [YYYY-MM-DD|--list]` (stop stack first; it `rm -rf`s the destination then copies, and drops `network.db` WAL sidecars).

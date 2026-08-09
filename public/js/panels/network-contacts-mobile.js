@@ -1,5 +1,9 @@
 import { contactActions } from '../lib/contact-deep-links.js';
 import { formatContactBirthday } from '../lib/network-birthday.js';
+import {
+  formatKidAgeLabel,
+  normalizeKidsBirthYears,
+} from '../lib/network-kids.js';
 import { compareContactSearchNameRank } from '../lib/network-contact-search.js';
 import { formatContactLastContact } from '../lib/network-last-contact.js';
 import {
@@ -938,6 +942,11 @@ export function mountNetworkContactsMobile(root) {
       org: String(fd.get('org') || '').trim(),
       kinds: kindsSel.length ? kindsSel : ['friend'],
       hasKids: Boolean(form.querySelector('[name="hasKids"]')?.checked),
+      kidsBirthYears: (() => {
+        const el = form.querySelector('.mobile-network__kids-field');
+        if (el && typeof el.getKidsBirthYears === 'function') return el.getKidsBirthYears();
+        return Array.isArray(current.kidsBirthYears) ? current.kidsBirthYears : [];
+      })(),
       location: String(fd.get('location') || '').trim(),
       address: String(fd.get('address') || '').trim(),
       relationshipStatus: String(fd.get('relationshipStatus') || '').trim(),
@@ -1327,7 +1336,7 @@ export function mountNetworkContactsMobile(root) {
     ];
 
     const hasKidsBox = document.createElement('div');
-    hasKidsBox.className = 'mobile-network__checks';
+    hasKidsBox.className = 'mobile-network__checks mobile-network__kids-field';
     const hasKidsLab = document.createElement('label');
     hasKidsLab.className = 'mobile-network__check';
     const hasKidsCb = document.createElement('input');
@@ -1336,6 +1345,93 @@ export function mountNetworkContactsMobile(root) {
     hasKidsCb.checked = Boolean(current.hasKids);
     hasKidsLab.append(hasKidsCb, document.createTextNode(' Have kids'));
     hasKidsBox.append(hasKidsLab);
+
+    const kidsYearsWrap = document.createElement('div');
+    kidsYearsWrap.className = 'mobile-network__kids-years';
+    kidsYearsWrap.hidden = !hasKidsCb.checked;
+    const kidsYearsLabel = document.createElement('span');
+    kidsYearsLabel.className = 'mobile-network__checks-label';
+    kidsYearsLabel.textContent = 'Kids born (year)';
+    const kidsYearsList = document.createElement('div');
+    kidsYearsList.className = 'mobile-network__kids-years-list';
+    /** @type {number[]} */
+    let kidsBirthYearsDraft = normalizeKidsBirthYears(current.kidsBirthYears);
+
+    function renderKidsYears() {
+      kidsYearsList.replaceChildren();
+      for (let i = 0; i < kidsBirthYearsDraft.length; i += 1) {
+        const year = kidsBirthYearsDraft[i];
+        const row = document.createElement('div');
+        row.className = 'mobile-network__kids-year-row';
+
+        const yearInput = document.createElement('input');
+        yearInput.type = 'number';
+        yearInput.className = 'mobile-network__input mobile-network__kids-year-input';
+        yearInput.name = `kidsBirthYear-${i}`;
+        yearInput.inputMode = 'numeric';
+        yearInput.min = String(new Date().getFullYear() - 120);
+        yearInput.max = String(new Date().getFullYear());
+        yearInput.placeholder = 'YYYY';
+        yearInput.value = year ? String(year) : '';
+        yearInput.setAttribute('aria-label', `Kid ${i + 1} birth year`);
+
+        const ageEl = document.createElement('span');
+        ageEl.className = 'mobile-network__kids-age muted';
+        ageEl.textContent = formatKidAgeLabel(year) || '—';
+
+        yearInput.addEventListener('input', () => {
+          const next = Number(yearInput.value);
+          kidsBirthYearsDraft[i] = Number.isFinite(next) ? next : 0;
+          ageEl.textContent = formatKidAgeLabel(kidsBirthYearsDraft[i]) || '—';
+        });
+        yearInput.addEventListener('change', () => {
+          kidsBirthYearsDraft = normalizeKidsBirthYears(kidsBirthYearsDraft);
+          renderKidsYears();
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'mobile-network__btn';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
+          kidsBirthYearsDraft = kidsBirthYearsDraft.filter((_, idx) => idx !== i);
+          renderKidsYears();
+        });
+
+        row.append(yearInput, ageEl, removeBtn);
+        kidsYearsList.append(row);
+      }
+    }
+
+    const addKidYearBtn = document.createElement('button');
+    addKidYearBtn.type = 'button';
+    addKidYearBtn.className = 'mobile-network__btn';
+    addKidYearBtn.textContent = 'Add birth year';
+    addKidYearBtn.addEventListener('click', () => {
+      kidsBirthYearsDraft = [...kidsBirthYearsDraft, 0];
+      renderKidsYears();
+      const inputs = kidsYearsList.querySelectorAll('input[type="number"]');
+      const last = inputs[inputs.length - 1];
+      if (last instanceof HTMLInputElement) last.focus();
+    });
+
+    hasKidsCb.addEventListener('change', () => {
+      kidsYearsWrap.hidden = !hasKidsCb.checked;
+      if (hasKidsCb.checked && !kidsBirthYearsDraft.length) {
+        kidsBirthYearsDraft = [0];
+        renderKidsYears();
+      }
+    });
+
+    kidsYearsWrap.append(kidsYearsLabel, kidsYearsList, addKidYearBtn);
+    hasKidsBox.append(kidsYearsWrap);
+    renderKidsYears();
+    hasKidsBox.getKidsBirthYears = () =>
+      normalizeKidsBirthYears(
+        [...kidsYearsList.querySelectorAll('input[type="number"]')].map((el) =>
+          Number(/** @type {HTMLInputElement} */ (el).value),
+        ),
+      );
 
     const lastContactField = field('Last contact', 'lastContactAt', formatContactLastContact(current), {
       placeholder: 'e.g. yesterday, 4/5/26, last month',

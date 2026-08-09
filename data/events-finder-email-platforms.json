@@ -1,0 +1,25 @@
+{
+  "hosts": [
+    "schema.org",
+    "fuckupnights.us8.list-manage.com",
+    "youtube.com"
+  ],
+  "notes": {},
+  "learned": [
+    {
+      "host": "schema.org",
+      "reason": "enriched:gmail:julia.hasty@gmail.com:152317:ics:75imceb260o34b9kc4pjgb9k71hj8b9p6osj8b9j60o68cb2chi34or268@google.com",
+      "at": "2026-08-06T04:12:14.899Z"
+    },
+    {
+      "host": "fuckupnights.us8.list-manage.com",
+      "reason": "enriched:gmail:julia.hasty@gmail.com:152461",
+      "at": "2026-08-06T04:12:17.330Z"
+    },
+    {
+      "host": "youtube.com",
+      "reason": "enriched:gmail:julia.hasty@gmail.com:152723",
+      "at": "2026-08-06T18:38:20.759Z"
+    }
+  ]
+}

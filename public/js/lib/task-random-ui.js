@@ -594,6 +594,22 @@ async function renderTaskCardModal(opts) {
   assignWrap.append(assignSummary, assignRow);
   card.append(assignWrap);
 
+  const waitingSlot = document.createElement('div');
+  waitingSlot.className = 'tasks-random__waiting';
+  const waiting = createWaitingOnControl({
+    taskId: String(data.task.id),
+    waitingOn: taskMeta?.waitingOn === true,
+    wrapClass: 'tasks-panel__waiting tasks-random__waiting-control',
+    checkClass: 'tasks-panel__waiting-check',
+    onMetaChange: (fullMeta) => {
+      const row = fullMeta?.byTaskId?.[String(data.task.id)] || null;
+      data.meta = row;
+      opts.onMetaChange?.(fullMeta);
+    },
+  });
+  waitingSlot.append(waiting.wrap);
+  card.append(waitingSlot);
+
   const actions = document.createElement('div');
   actions.className = 'tasks-random__actions';
   const skipBtn = document.createElement('button');
@@ -960,7 +976,7 @@ export async function openProjectLocationsTable(opts) {
 }
 
 /**
- * Compact "Waiting on" checkbox for a task row.
+ * "Waiting on" checkbox (task detail popup).
  * @param {{
  *   taskId: string,
  *   waitingOn?: boolean,

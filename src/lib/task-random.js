@@ -80,7 +80,24 @@ export function parseRandomTaskFilters(body = {}) {
   };
 }
 
+/**
+ * Tasks with scheduledFor in the future are out of the random pool.
+ * Overdue (scheduledFor <= now) and unscheduled tasks stay eligible.
+ * @param {Record<string, unknown> | null | undefined} taskMeta
+ * @param {number} [nowMs]
+ */
+export function isScheduledInFuture(taskMeta, nowMs = Date.now()) {
+  const raw = taskMeta?.scheduledFor;
+  if (typeof raw !== 'string' || !raw) return false;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) && ms > nowMs;
+}
+
 export function taskMatchesRandomFilters(taskMeta, projectMeta, filters) {
+  // Always exclude future-scheduled tasks; overdue + unscheduled remain eligible.
+  if (isScheduledInFuture(taskMeta)) return false;
+  // Waiting-on tasks are blocked — keep them out of the random pool.
+  if (taskMeta?.waitingOn === true) return false;
   if (filters.priorities?.length) {
     if (taskMeta?.priority && !filters.priorities.includes(taskMeta.priority)) return false;
   }

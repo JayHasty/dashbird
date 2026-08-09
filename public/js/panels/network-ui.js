@@ -6,6 +6,11 @@
 import { beginWaitCursor, endWaitCursor } from '../lib/wait-cursor.js';
 import { formatContactLastContact } from '../lib/network-last-contact.js';
 import { formatContactBirthday } from '../lib/network-birthday.js';
+import {
+  ageFromBirthYear,
+  formatKidAgeLabel,
+  normalizeKidsBirthYears,
+} from '../lib/network-kids.js';
 import { compareContactSearchNameRank } from '../lib/network-contact-search.js';
 import {
   CONTACT_REGION_IN_BAY,
@@ -729,6 +734,7 @@ export function mountNetworkUi(root) {
       org: c.org || '',
       kinds: Array.isArray(c.kinds) && c.kinds.length ? [...c.kinds] : ['friend'],
       hasKids: Boolean(c.hasKids),
+      kidsBirthYears: Array.isArray(c.kidsBirthYears) ? [...c.kidsBirthYears] : [],
       location: c.location || '',
       address: c.address || '',
       relationshipStatus: c.relationshipStatus || '',
@@ -1143,7 +1149,12 @@ export function mountNetworkUi(root) {
   function kindsLabel(c) {
     const kinds = Array.isArray(c.kinds) ? c.kinds : [];
     const base = kinds.length ? kinds.join(' + ') : 'friend';
-    return c.hasKids ? `${base} · have kids` : base;
+    if (!c.hasKids) return base;
+    const ages = normalizeKidsBirthYears(c.kidsBirthYears)
+      .map((y) => ageFromBirthYear(y))
+      .filter((a) => a != null);
+    if (ages.length) return `${base} · kids ${ages.join(', ')}`;
+    return `${base} · have kids`;
   }
 
   /** @type {string} */
@@ -2436,6 +2447,7 @@ export function mountNetworkUi(root) {
 
     const form = document.createElement('form');
     form.className = 'network-crm__form';
+    form.id = `network-crm-contact-${String(current.id || 'new').replace(/[^a-zA-Z0-9_-]/g, '')}`;
     form.dataset.contactId = String(current.id || '');
     form.setAttribute('aria-label', 'Edit contact');
 
@@ -2601,7 +2613,7 @@ export function mountNetworkUi(root) {
     }
 
     const hasKidsBox = document.createElement('div');
-    hasKidsBox.className = 'network-crm__checks';
+    hasKidsBox.className = 'network-crm__checks network-crm__kids-field';
     const hasKidsLab = document.createElement('label');
     hasKidsLab.className = 'network-crm__check';
     const hasKidsCb = document.createElement('input');
@@ -2610,6 +2622,102 @@ export function mountNetworkUi(root) {
     hasKidsCb.checked = Boolean(c.hasKids);
     hasKidsLab.append(hasKidsCb, document.createTextNode(' Have kids'));
     hasKidsBox.append(hasKidsLab);
+
+    const kidsYearsWrap = document.createElement('div');
+    kidsYearsWrap.className = 'network-crm__kids-years';
+    kidsYearsWrap.hidden = !hasKidsCb.checked;
+    const kidsYearsLabel = document.createElement('span');
+    kidsYearsLabel.className = 'network-crm__checks-label';
+    kidsYearsLabel.textContent = 'Kids born (year)';
+    const kidsYearsList = document.createElement('div');
+    kidsYearsList.className = 'network-crm__kids-years-list';
+    kidsYearsList.setAttribute('aria-label', 'Kid birth years');
+    /** @type {number[]} */
+    let kidsBirthYearsDraft = normalizeKidsBirthYears(c.kidsBirthYears);
+
+    function syncKidsYearsHidden() {
+      kidsYearsWrap.hidden = !hasKidsCb.checked;
+    }
+
+    function renderKidsYears() {
+      kidsYearsList.replaceChildren();
+      for (let i = 0; i < kidsBirthYearsDraft.length; i += 1) {
+        const year = kidsBirthYearsDraft[i];
+        const row = document.createElement('div');
+        row.className = 'network-crm__kids-year-row';
+
+        const yearInput = document.createElement('input');
+        yearInput.type = 'number';
+        yearInput.className = 'network-crm__input network-crm__kids-year-input';
+        yearInput.name = `kidsBirthYear-${i}`;
+        yearInput.inputMode = 'numeric';
+        yearInput.min = String(new Date().getFullYear() - 120);
+        yearInput.max = String(new Date().getFullYear());
+        yearInput.placeholder = 'YYYY';
+        yearInput.value = year ? String(year) : '';
+        yearInput.setAttribute('aria-label', `Kid ${i + 1} birth year`);
+
+        const ageEl = document.createElement('span');
+        ageEl.className = 'network-crm__kids-age muted';
+        ageEl.textContent = formatKidAgeLabel(year) || '—';
+
+        yearInput.addEventListener('input', () => {
+          const next = Number(yearInput.value);
+          kidsBirthYearsDraft[i] = Number.isFinite(next) ? next : 0;
+          ageEl.textContent = formatKidAgeLabel(kidsBirthYearsDraft[i]) || '—';
+          markDirty?.();
+        });
+        yearInput.addEventListener('change', () => {
+          kidsBirthYearsDraft = normalizeKidsBirthYears(kidsBirthYearsDraft);
+          renderKidsYears();
+          markDirty?.();
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'network-crm__btn network-crm__btn--tiny';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
+          kidsBirthYearsDraft = kidsBirthYearsDraft.filter((_, idx) => idx !== i);
+          renderKidsYears();
+          markDirty?.();
+        });
+
+        row.append(yearInput, ageEl, removeBtn);
+        kidsYearsList.append(row);
+      }
+    }
+
+    const addKidYearBtn = document.createElement('button');
+    addKidYearBtn.type = 'button';
+    addKidYearBtn.className = 'network-crm__btn network-crm__btn--tiny';
+    addKidYearBtn.textContent = 'Add birth year';
+    addKidYearBtn.addEventListener('click', () => {
+      kidsBirthYearsDraft = [...kidsBirthYearsDraft, 0];
+      renderKidsYears();
+      const inputs = kidsYearsList.querySelectorAll('input[type="number"]');
+      const last = inputs[inputs.length - 1];
+      if (last instanceof HTMLInputElement) last.focus();
+      markDirty?.();
+    });
+
+    hasKidsCb.addEventListener('change', () => {
+      syncKidsYearsHidden();
+      if (hasKidsCb.checked && !kidsBirthYearsDraft.length) {
+        kidsBirthYearsDraft = [0];
+        renderKidsYears();
+      }
+    });
+
+    kidsYearsWrap.append(kidsYearsLabel, kidsYearsList, addKidYearBtn);
+    hasKidsBox.append(kidsYearsWrap);
+    renderKidsYears();
+    hasKidsBox.getKidsBirthYears = () =>
+      normalizeKidsBirthYears(
+        [...kidsYearsList.querySelectorAll('input[type="number"]')].map((el) =>
+          Number(/** @type {HTMLInputElement} */ (el).value),
+        ),
+      );
 
     const preferred = new Set(c.preferredContactMethods || []);
 
@@ -3253,15 +3361,20 @@ export function mountNetworkUi(root) {
 
     const saveBtn = document.createElement('button');
     saveBtn.type = 'submit';
-    saveBtn.className = 'network-crm__btn network-crm__btn--primary';
+    saveBtn.className = 'network-crm__btn network-crm__btn--primary network-crm__detail-save';
+    saveBtn.setAttribute('form', form.id);
     saveBtn.textContent = 'Save';
     saveBtn.title = 'Save changes (Ctrl/Cmd+S)';
 
     function syncSaveBtn() {
-      saveBtn.textContent = detailDirty ? 'Save · unsaved' : 'Save';
+      saveBtn.textContent = detailDirty ? 'Save' : 'Saved';
       saveBtn.classList.toggle('network-crm__btn--unsaved', detailDirty);
+      saveBtn.title = detailDirty
+        ? 'Save changes (Ctrl/Cmd+S)'
+        : 'All changes saved';
     }
     syncSaveBtn();
+    head.append(saveBtn);
 
     const markDirty = () => {
       if (gen !== detailGeneration) return;
@@ -3288,7 +3401,7 @@ export function mountNetworkUi(root) {
     delBtn.className = 'network-crm__btn network-crm__btn--danger';
     delBtn.textContent = 'Delete';
 
-    actions.append(saveBtn, undoBtn, enrichBtn, delBtn);
+    actions.append(undoBtn, enrichBtn, delBtn);
     form.append(actions);
 
     /** @type {object[]} */
@@ -3322,6 +3435,11 @@ export function mountNetworkUi(root) {
         org: String(fd.get('org') || '').trim(),
         kinds: kindsSel.length ? kindsSel : ['friend'],
         hasKids: Boolean(form.querySelector('[name="hasKids"]')?.checked),
+        kidsBirthYears: (() => {
+          const el = form.querySelector('.network-crm__kids-field');
+          if (el && typeof el.getKidsBirthYears === 'function') return el.getKidsBirthYears();
+          return Array.isArray(current.kidsBirthYears) ? current.kidsBirthYears : [];
+        })(),
         location: String(fd.get('location') || '').trim(),
         address: String(fd.get('address') || '').trim(),
         relationshipStatus: String(fd.get('relationshipStatus') || '').trim(),
@@ -3427,6 +3545,13 @@ export function mountNetworkUi(root) {
           }
 
           current = saved;
+
+          // Scene tag changes create/update community groups server-side — drop
+          // stale Groups prefetch so the next Groups visit sees them.
+          if (String(saved.networkCircles || '') !== String(priorBody.networkCircles || '')) {
+            invalidateNetworkPrefetch();
+            groupsCache = [];
+          }
 
           // Org ensure/create only matters when the org name changed.
           if (String(body.org || '') !== String(priorBody.org || '')) {
@@ -5606,8 +5731,9 @@ export function mountNetworkUi(root) {
     if (groupsUiMounted && groupsUiApi) {
       await groupsUiApi.focus({
         selectGroupId: opts.selectGroupId || null,
-        // Fresh group from Start group / deep-link — reload list.
-        refresh: Boolean(opts.selectGroupId),
+        // Always reload — Scene tags added from contact detail create community
+        // groups server-side; a stale mounted list would omit them.
+        refresh: true,
       });
       groupsUiApi.setQuery?.(search.value || query || '');
       syncGroupToolbar();

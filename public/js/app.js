@@ -256,7 +256,7 @@ async function mainMobile() {
 
   const [{ mountViewModeToggle }, { mountMobileShell }] = await Promise.all([
     import('./panels/view-mode-toggle.js'),
-    import('./panels/mobile-shell.js?v=mobile-panels-20260805-events-1'),
+    import('./panels/mobile-shell.js?v=mobile-panels-20260808-phone-boot-1'),
   ]);
 
   mountViewModeToggle(document.getElementById('mount-view-mode'));

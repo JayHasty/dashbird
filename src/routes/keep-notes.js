@@ -10,8 +10,10 @@ import {
   deleteKeepNote,
   getKeepNote,
   KEEP_NOTES_ROOT,
+  listKeepNoteCategories,
   listKeepNotes,
   readKeepNoteAttachment,
+  rememberKeepNoteCategory,
   reorderKeepNotes,
   setKeepNoteAttachment,
   updateKeepNote,
@@ -24,6 +26,26 @@ router.use(express.json({ limit: '14mb' }));
 router.get('/meta', (_req, res) => {
   res.setHeader('Cache-Control', 'private, no-store');
   res.json({ ok: true, root: KEEP_NOTES_ROOT });
+});
+
+router.get('/categories', async (_req, res) => {
+  try {
+    const categories = await listKeepNoteCategories();
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, categories });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.post('/categories', async (req, res) => {
+  try {
+    const categories = await rememberKeepNoteCategory(req.body?.category ?? req.body?.name);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(201).json({ ok: true, categories });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
 });
 
 /** How many Takeout files are staged for import in data/keep-import/. */
@@ -85,6 +107,7 @@ router.post('/', async (req, res) => {
       title: req.body?.title,
       body: req.body?.body,
       pinned: req.body?.pinned,
+      category: req.body?.category,
     });
     res.setHeader('Cache-Control', 'private, no-store');
     res.status(201).json({ ok: true, note });
@@ -139,12 +162,16 @@ router.post('/reorder', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   try {
-    const note = await updateKeepNote(String(req.params.id || ''), {
+    const patch = {
       title: req.body?.title,
       body: req.body?.body,
       pinned: req.body?.pinned,
       archived: req.body?.archived,
-    });
+    };
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'category')) {
+      patch.category = req.body.category;
+    }
+    const note = await updateKeepNote(String(req.params.id || ''), patch);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, note });
   } catch (e) {

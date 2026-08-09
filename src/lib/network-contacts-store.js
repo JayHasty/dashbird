@@ -19,6 +19,7 @@ import {
 import { deleteOrganizations } from './network-organizations-store.js';
 import { normalizeLastContactFields } from './network-last-contact.js';
 import { normalizeBirthdayFields } from './network-birthday.js';
+import { normalizeKidsBirthYears } from './network-kids.js';
 import {
   normalizeContactDisplayName,
   relocateOutOfTownFromScenes,
@@ -557,6 +558,7 @@ export function normalizeContact(raw) {
     lastName = parts.lastName;
   }
   const hasKids = normalizeHasKids(raw);
+  const kidsBirthYears = normalizeKidsBirthYears(raw.kidsBirthYears);
   let summary = cleanStr(raw.summary, 8000);
   if (!summary && Array.isArray(raw.tags) && raw.tags.length) {
     summary = cleanStrList(raw.tags, 40).join(' ');
@@ -588,6 +590,7 @@ export function normalizeContact(raw) {
     aliases: cleanStrList(raw.aliases, 20).map(titleCaseName),
     kinds,
     hasKids,
+    kidsBirthYears,
     summary,
     notes: cleanStr(raw.notes, 8000),
     bio: cleanStr(raw.bio, 8000),

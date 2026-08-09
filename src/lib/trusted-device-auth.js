@@ -111,15 +111,37 @@ export function verifyTrustedDeviceCookie(cookieHeader) {
   }
 }
 
+/** Avoid bcrypt.compare stampedes when Firefox retries many assets with Basic auth. */
+const BASIC_AUTH_OK_TTL_MS = 60_000;
+/** @type {Map<string, number>} */
+const basicAuthOkUntil = new Map();
+
+function basicAuthCacheKey(authHeader) {
+  return crypto.createHash('sha256').update(String(authHeader || '')).digest('hex');
+}
+
 export async function verifyBasicAuthCredentials(authHeader) {
   if (!isTrustedDeviceAuthEnabled()) return false;
+  const cacheKey = basicAuthCacheKey(authHeader);
+  const cachedUntil = basicAuthOkUntil.get(cacheKey) || 0;
+  if (cachedUntil > Date.now()) return true;
   const creds = parseBasicAuth(authHeader);
   if (!creds) return false;
   const expectedUser = readEnv('DASHBOARD_BASIC_AUTH_USER');
   const hash = readEnv('DASHBOARD_BASIC_AUTH_HASH');
   if (creds.user !== expectedUser) return false;
   try {
-    return await bcrypt.compare(creds.pass, hash);
+    const ok = await bcrypt.compare(creds.pass, hash);
+    if (ok) {
+      basicAuthOkUntil.set(cacheKey, Date.now() + BASIC_AUTH_OK_TTL_MS);
+      if (basicAuthOkUntil.size > 32) {
+        const now = Date.now();
+        for (const [k, exp] of basicAuthOkUntil) {
+          if (exp <= now) basicAuthOkUntil.delete(k);
+        }
+      }
+    }
+    return ok;
   } catch {
     return false;
   }

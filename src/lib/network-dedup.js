@@ -743,6 +743,20 @@ export function buildMergedContact(keep, drop, opts = {}) {
     aliases,
     kinds: unionStrList(keep.kinds, drop.kinds, 10),
     hasKids: Boolean(keep.hasKids || drop.hasKids),
+    kidsBirthYears: (() => {
+      const years = [
+        ...(Array.isArray(keep.kidsBirthYears) ? keep.kidsBirthYears : []),
+        ...(Array.isArray(drop.kidsBirthYears) ? drop.kidsBirthYears : []),
+      ];
+      const out = [];
+      for (const y of years) {
+        const n = Number(y);
+        if (!Number.isFinite(n) || !Number.isInteger(n) || out.includes(n)) continue;
+        out.push(n);
+      }
+      out.sort((a, b) => b - a);
+      return out.slice(0, 20);
+    })(),
     summary: joinUniqueText(keep.summary, drop.summary, 8000),
     notes: joinUniqueText(keep.notes, drop.notes, 8000),
     bio: joinUniqueText(keep.bio, drop.bio, 8000),

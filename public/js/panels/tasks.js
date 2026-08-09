@@ -191,17 +191,53 @@ export function mountTasks(root, config = {}) {
   moveRenameLabel.append(moveRenameText, moveRenameInput);
   const moveScheduleSlot = document.createElement('div');
   moveScheduleSlot.className = 'tasks-panel__move-schedule';
+  const moveWaitingSlot = document.createElement('div');
+  moveWaitingSlot.className = 'tasks-panel__move-waiting';
 
   const moveTagsBtn = document.createElement('button');
   moveTagsBtn.type = 'button';
   moveTagsBtn.className = 'tasks-panel__move-edit-tags';
   moveTagsBtn.textContent = 'Edit tags';
 
+  const moveSubtasks = document.createElement('div');
+  moveSubtasks.className = 'tasks-panel__move-subtasks';
+  const moveSubtasksTitle = document.createElement('div');
+  moveSubtasksTitle.className = 'tasks-panel__move-title';
+  moveSubtasksTitle.textContent = 'Subtasks';
+  const moveSubtasksList = document.createElement('ul');
+  moveSubtasksList.className = 'tasks-panel__move-subtasks-list';
+  const moveSubtasksEmpty = document.createElement('p');
+  moveSubtasksEmpty.className = 'tasks-panel__move-subtasks-empty muted';
+  moveSubtasksEmpty.textContent = 'No subtasks yet.';
+  const moveSubtasksForm = document.createElement('form');
+  moveSubtasksForm.className = 'tasks-panel__move-subtasks-add';
+  moveSubtasksForm.setAttribute('aria-label', 'Add a subtask');
+  const moveSubtasksInput = document.createElement('input');
+  moveSubtasksInput.type = 'text';
+  moveSubtasksInput.className = 'tasks-panel__input tasks-panel__move-subtasks-input';
+  moveSubtasksInput.placeholder = 'Add a subtask…';
+  moveSubtasksInput.maxLength = 280;
+  moveSubtasksInput.autocomplete = 'off';
+  moveSubtasksForm.append(moveSubtasksInput);
+  moveSubtasks.append(
+    moveSubtasksTitle,
+    moveSubtasksList,
+    moveSubtasksEmpty,
+    moveSubtasksForm,
+  );
+
   const moveCancel = document.createElement('button');
   moveCancel.type = 'button';
   moveCancel.className = 'tasks-panel__move-cancel';
   moveCancel.textContent = 'Close';
-  moveDialog.append(moveRenameLabel, moveScheduleSlot, moveTagsBtn, moveCancel);
+  moveDialog.append(
+    moveRenameLabel,
+    moveScheduleSlot,
+    moveWaitingSlot,
+    moveTagsBtn,
+    moveSubtasks,
+    moveCancel,
+  );
   moveOverlay.append(moveDialog);
   wrap.append(moveOverlay);
 
@@ -238,6 +274,10 @@ export function mountTasks(root, config = {}) {
   let highlightTaskId = null;
   /** @type {string | null} */
   let movingTaskId = null;
+  /** @type {Array<{ id: string, text: string, done: boolean }>} */
+  let moveSubtaskItems = [];
+  /** @type {number} */
+  let moveSubtasksLoadToken = 0;
 
   /**
    * @param {{ id: string, projectId?: number | null }} task
@@ -664,7 +704,155 @@ export function mountTasks(root, config = {}) {
   function hideMoveOverlay() {
     moveOverlay.hidden = true;
     movingTaskId = null;
+    moveSubtaskItems = [];
+    moveSubtasksLoadToken += 1;
+    moveSubtasksList.replaceChildren();
+    moveSubtasksEmpty.hidden = false;
+    moveSubtasksInput.value = '';
     wrap.classList.remove('tasks-panel--moving');
+  }
+
+  function renderMoveSubtasks() {
+    moveSubtasksList.replaceChildren();
+    for (const sub of moveSubtaskItems) {
+      const li = document.createElement('li');
+      li.className = 'tasks-panel__move-subtask';
+      li.dataset.id = sub.id;
+      if (sub.done) li.classList.add('tasks-panel__move-subtask--done');
+
+      const label = document.createElement('label');
+      label.className = 'tasks-panel__move-subtask-label';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'tasks-panel__check';
+      cb.checked = sub.done;
+
+      const text = document.createElement('span');
+      text.className = 'tasks-panel__move-subtask-text';
+      text.textContent = sub.text;
+
+      label.append(cb, text);
+      li.append(label);
+      moveSubtasksList.append(li);
+
+      cb.addEventListener('change', () => {
+        void setSubtaskDone(sub.id, cb.checked);
+      });
+    }
+    moveSubtasksEmpty.hidden = moveSubtaskItems.length > 0;
+  }
+
+  /**
+   * @param {string} parentId
+   */
+  async function loadMoveSubtasks(parentId) {
+    const token = ++moveSubtasksLoadToken;
+    moveSubtaskItems = [];
+    renderMoveSubtasks();
+    moveSubtasksEmpty.textContent = 'Loading subtasks…';
+    moveSubtasksEmpty.hidden = false;
+    try {
+      const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(parentId)}/subtasks`, {
+        cache: 'no-store',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (token !== moveSubtasksLoadToken || movingTaskId !== parentId) return;
+      if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+      moveSubtaskItems = Array.isArray(j.items)
+        ? j.items
+            .map((it) => ({
+              id: String(it.id),
+              text: String(it.text || '').trim(),
+              done: Boolean(it.done),
+            }))
+            .filter((it) => it.id && it.text)
+        : [];
+      moveSubtasksEmpty.textContent = 'No subtasks yet.';
+      renderMoveSubtasks();
+    } catch {
+      if (token !== moveSubtasksLoadToken || movingTaskId !== parentId) return;
+      moveSubtasksEmpty.textContent = 'Could not load subtasks.';
+      moveSubtasksEmpty.hidden = false;
+    }
+  }
+
+  /**
+   * @param {string} parentId
+   * @param {string} text
+   */
+  async function addSubtask(parentId, text) {
+    const t = text.trim();
+    if (!t || movingTaskId !== parentId) return false;
+    try {
+      const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(parentId)}/subtasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: t }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false || !j.item) throw new Error(j.error || `HTTP ${r.status}`);
+      const item = {
+        id: String(j.item.id),
+        text: String(j.item.text || '').trim(),
+        done: Boolean(j.item.done),
+      };
+      if (!item.id || !item.text) throw new Error('invalid_item');
+      // Subtasks are hidden from the project list; drop if create raced into cache.
+      removeTaskLocally(item.id, projectId);
+      if (movingTaskId === parentId) {
+        moveSubtaskItems = [...moveSubtaskItems.filter((s) => s.id !== item.id), item];
+        // Keep open subtasks first, then done.
+        moveSubtaskItems.sort((a, b) => Number(a.done) - Number(b.done));
+        renderMoveSubtasks();
+      }
+      showStatus('');
+      return true;
+    } catch {
+      showStatus('Could not add subtask.', true);
+      return false;
+    }
+  }
+
+  /**
+   * @param {string} subtaskId
+   * @param {boolean} done
+   */
+  async function setSubtaskDone(subtaskId, done) {
+    const parentId = movingTaskId;
+    const prev = moveSubtaskItems.find((s) => s.id === subtaskId);
+    if (!prev || !parentId) return;
+    moveSubtaskItems = moveSubtaskItems.map((s) =>
+      s.id === subtaskId ? { ...s, done } : s,
+    );
+    renderMoveSubtasks();
+    try {
+      const path = done ? 'done' : 'undo';
+      const r = await fetch(
+        `/api/vikunja/todos/${encodeURIComponent(subtaskId)}/${path}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            done
+              ? { archive: false }
+              : { projectId: projectId, archive: false },
+          ),
+        },
+      );
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+      removeTaskLocally(subtaskId, projectId);
+      showStatus('');
+    } catch {
+      if (movingTaskId === parentId) {
+        moveSubtaskItems = moveSubtaskItems.map((s) =>
+          s.id === subtaskId ? { ...s, done: prev.done } : s,
+        );
+        renderMoveSubtasks();
+      }
+      showStatus(done ? 'Could not complete subtask.' : 'Could not reopen subtask.', true);
+    }
   }
 
   /**
@@ -732,6 +920,7 @@ export function mountTasks(root, config = {}) {
     moveRenameInput.value = task?.text || '';
     const taskMeta = taskRandomMeta.byTaskId?.[String(taskId)] || null;
     moveScheduleSlot.replaceChildren();
+    moveWaitingSlot.replaceChildren();
     const sched = createScheduleControl({
       wrapClass: 'task-schedule tasks-panel__move-schedule-wrap',
       buttonClass: 'tasks-panel__schedule tasks-panel__move-schedule-btn',
@@ -763,14 +952,26 @@ export function mountTasks(root, config = {}) {
       }
     });
     moveScheduleSlot.append(sched.wrap);
+    const waiting = createWaitingOnControl({
+      taskId,
+      waitingOn: taskMeta?.waitingOn === true,
+      wrapClass: 'tasks-panel__waiting tasks-panel__move-waiting-control',
+      checkClass: 'tasks-panel__waiting-check',
+      onMetaChange: (meta) => {
+        taskRandomMeta = meta;
+      },
+    });
+    moveWaitingSlot.append(waiting.wrap);
     void ensureOverduePriority(taskId, taskMeta).then((res) => {
       if (!res || movingTaskId !== taskId) return;
       taskRandomMeta = res.meta;
       sched.sync(res.row);
     });
     moveTagsBtn.onclick = () => openEditTagsForTask(taskId);
+    moveSubtasksInput.value = '';
     moveOverlay.hidden = false;
     wrap.classList.add('tasks-panel--moving');
+    void loadMoveSubtasks(taskId);
     queueMicrotask(() => {
       moveRenameInput.focus();
       moveRenameInput.select();
@@ -1015,16 +1216,6 @@ export function mountTasks(root, config = {}) {
 
     if (!item.done && !pendingDone.has(item.id)) {
       const taskMeta = taskRandomMeta.byTaskId?.[String(item.id)] || null;
-      const waiting = createWaitingOnControl({
-        taskId: item.id,
-        waitingOn: taskMeta?.waitingOn === true,
-        wrapClass: 'tasks-panel__waiting',
-        checkClass: 'tasks-panel__waiting-check',
-        onMetaChange: (meta) => {
-          taskRandomMeta = meta;
-        },
-      });
-      row.append(waiting.wrap);
       void ensureOverduePriority(item.id, taskMeta).then((res) => {
         if (!res) return;
         taskRandomMeta = res.meta;
@@ -1390,6 +1581,17 @@ export function mountTasks(root, config = {}) {
       e.preventDefault();
       void commitMoveOverlayRename(movingTaskId);
     }
+  });
+
+  moveSubtasksForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const parentId = movingTaskId;
+    if (!parentId) return;
+    const t = moveSubtasksInput.value;
+    moveSubtasksInput.value = '';
+    void addSubtask(parentId, t).then((ok) => {
+      if (ok) moveSubtasksInput.focus();
+    });
   });
 
   moveCancel.addEventListener('click', (e) => {

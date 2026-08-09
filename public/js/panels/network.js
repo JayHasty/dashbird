@@ -13,7 +13,7 @@ export function mountNetwork(root) {
 
   // Full UI is attached after API modules land; this stub is replaced in network-ui step.
   // Cache-bust query so avatar clear-button removals always land after rebuilds.
-  import('./network-ui.js?v=new-contact-btn-1')
+  import('./network-ui.js?v=kids-birth-years-1')
     .then(({ mountNetworkUi }) => {
       // #region agent log
       const payload = {

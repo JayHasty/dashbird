@@ -1,6 +1,6 @@
 {
   "meta": {
-    "timezone_note": "Event times are ISO 8601 (Z or offsets). Edit this file or replace with scraper output. HUMAN: ISS sighting times \u2014 use NASA Spot the Station (https://spotthestation.nasa.gov/) as the primary source; Heavens-Above is optional for extra pass detail. Bright satellite / Iridium-class flares \u2014 use Heavens-Above (https://www.heavens-above.com/) as the primary list after you set your observing site. Launch times from SpaceLaunchSchedule / NASASpaceflight; storms from NOAA SWPC. Hero aurora strip: live SWPC Ovation + planetary K at WEATHER_LAT/LON from .env (94608 Oakland defaults); calendar aurora events are not used when that fetch succeeds. When SWPC data loads, the aurora row is shown only if modeled likelihood is Medium or higher (Low is hidden). Planet rows (type planet): API adds Mercury\u2013Saturn when each passes civil-night, altitude, and brightness checks at WEATHER_LAT/LON; Uranus and Neptune are not treated as casual naked-eye targets here. Annular world row (type annular_eclipse_world): injected by /api/sky-events from live NASA GSFC decade HTML (parsed each request) when the next land annular eclipse is within ~6 months (not ZIP-scoped; separate from calendar solar_eclipse templates).",
+    "timezone_note": "Event times are ISO 8601 (Z or offsets). Edit this file or replace with scraper output. HUMAN: ISS sighting times \u2014 use NASA Spot the Station (https://spotthestation.nasa.gov/) as the primary source; Heavens-Above is optional for extra pass detail. Bright satellite / Iridium-class flares \u2014 use Heavens-Above (https://www.heavens-above.com/) as the primary list after you set your observing site. Launch times from SpaceLaunchSchedule / NASASpaceflight; storms from NOAA SWPC. Hero aurora strip: live SWPC Ovation + planetary K at WEATHER_LAT/LON from .env (94608 Oakland defaults); calendar aurora events are not used when that fetch succeeds. When SWPC data loads, the aurora row is shown only if modeled likelihood is Medium or higher (Low is hidden). Planet rows (type planet): API adds Mercury\u2013Saturn when each passes civil-night, altitude, and brightness checks at WEATHER_LAT/LON; Uranus and Neptune are not treated as casual naked-eye targets here. Sky strip shows total solar/lunar eclipses only (annular/partial excluded).",
     "window_policy": "API returns events overlapping the requested window. Supermoon (type supermoon): row is kept only if the event sets listedSupermoon: true (you have confirmed that full moon appears on a public supermoon list \u2014 NASA Science, Sky at Night, etc. \u2014 not every full moon qualifies) AND \u201ctoday\u201d in America/Los_Angeles is within \u00b11 calendar day of peakAt. See filterSupermoonForHeroStrip in src/lib/sky-events.js.",
     "icon_sources": "Raster sky icons from Vecteezy / iStock / HiClipart / GetDrawings / Pinterest as noted in scripts/process_sky_icons.py. ISS pass and Starlink train use `iss-satellite.png`; satellite flare (iridium) uses `satelite.png`. Respect each site\u2019s license. Planet strip icons live in `public/assets/sky/planets/` (PNG/WebP); paths are mapped in `src/lib/planet-icons.js`.",
     "meteor_range_policy": "Rows with type `meteor` use `startsAt`/`endsAt` only for the **peak night window** (roughly the night named on AMS / IMO calendars). The shower\u2019s full active span is longer \u2014 see AMS shower calendar for activity dates and moonlight.",
@@ -133,12 +133,6 @@
       "id": "solar_eclipse",
       "label": "Solar eclipse",
       "icon": "/assets/sky/solareclipse.png"
-    },
-    {
-      "id": "annular_eclipse_world",
-      "label": "Annular eclipse (world)",
-      "icon": "/assets/sky/solareclipse.png",
-      "forecastUrl": "https://science.nasa.gov/eclipses/"
     },
     {
       "id": "comet",

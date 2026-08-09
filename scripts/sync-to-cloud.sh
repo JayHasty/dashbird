@@ -5,10 +5,13 @@
 #   # or set CLOUD_HOST once in .env
 # Optional:
 #   CLOUD_DIR=/opt/dashbird
-#   SYNC_DATA=1          # also rsync data/ + public/data bookmarks/notes
+#   SYNC_DATA=1          # also rsync data/ + public/data bookmarks (not Keep Notes)
 #   SYNC_DATA_CONFIRM=1  # required with SYNC_DATA=1 to actually push (else dry-run)
 #   SYNC_ENV=1           # push local .env to the server
 #   COMPOSE_FILE=docker-compose.cloud.yml
+#
+# Keep Notes (`data/keep-notes/`) and Takeout staging (`data/keep-import/`) are
+# intentionally NOT synced — LAN and cloud each keep their own notes.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,6 +20,12 @@ REMOTE_DIR="${CLOUD_DIR:-/opt/dashbird}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.cloud.yml}"
 SYNC_DATA="${SYNC_DATA:-0}"
 SYNC_ENV="${SYNC_ENV:-0}"
+
+# Relative to data/ transfer root.
+RSYNC_DATA_EXCLUDES=(
+  --exclude keep-notes/
+  --exclude keep-import/
+)
 
 if [[ -z "$HOST" && -f "$ROOT/.env" ]]; then
   HOST="$(grep -E '^CLOUD_HOST=' "$ROOT/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
@@ -69,11 +78,12 @@ fi
 
 if [[ "$SYNC_DATA" == "1" ]]; then
   mkdir -p "$ROOT/data"
+  echo "[dashbird] data/ sync excludes Keep Notes (keep-notes/, keep-import/) — LAN and cloud stay separate"
   if [[ "${SYNC_DATA_CONFIRM:-0}" != "1" ]]; then
     # Footgun guard: pushing a stale local data/ can clobber good cloud data. Default to a
     # dry run so you can see exactly what would change before committing.
     echo "[dashbird] SYNC_DATA=1 DRY RUN — no changes made. Files that WOULD be pushed:"
-    rsync -avzn "$ROOT/data/" "${HOST}:${REMOTE_DIR}/data/" || true
+    rsync -avzn "${RSYNC_DATA_EXCLUDES[@]}" "$ROOT/data/" "${HOST}:${REMOTE_DIR}/data/" || true
     echo "[dashbird] Re-run with SYNC_DATA_CONFIRM=1 to actually push data/ (remote is snapshotted first)."
   else
     SNAP="/var/backups/dashbird/pre-sync-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
@@ -81,7 +91,7 @@ if [[ "$SYNC_DATA" == "1" ]]; then
     ssh "$HOST" "mkdir -p /var/backups/dashbird && tar -czf '${SNAP}' -C '${REMOTE_DIR}' data" \
       || echo "  (remote snapshot failed — continuing, but you have no rollback point)"
     echo "[dashbird] Pushing persistent data/ (tools, network, events, assets — never commit these)"
-    rsync -avz "$ROOT/data/" "${HOST}:${REMOTE_DIR}/data/"
+    rsync -avz "${RSYNC_DATA_EXCLUDES[@]}" "$ROOT/data/" "${HOST}:${REMOTE_DIR}/data/"
 
     for f in bookmarks-personal.json notes.md last-backup.txt; do
       if [[ -f "$ROOT/public/data/$f" ]]; then

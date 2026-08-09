@@ -2,10 +2,12 @@ import { Router } from 'express';
 import express from 'express';
 import {
   createPanelProject,
+  createPanelSubtask,
   createPanelTodo,
   deletePanelProject,
   listAllPanelTodos,
   listPanelProjects,
+  listPanelSubtasks,
   listPanelTodos,
   movePanelTodo,
   renamePanelProject,
@@ -286,6 +288,29 @@ router.patch('/todos/:id', async (req, res) => {
   }
 });
 
+/** Subtasks for a parent task (Vikunja relation kind `subtask`). */
+router.get('/todos/:id/subtasks', async (req, res) => {
+  try {
+    const items = await listPanelSubtasks(req.params.id);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, items });
+  } catch (e) {
+    sendErr(e, res);
+  }
+});
+
+router.post('/todos/:id/subtasks', async (req, res) => {
+  try {
+    const item = await createPanelSubtask(
+      req.params.id,
+      req.body?.text ?? req.body?.title,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(201).json({ ok: true, item });
+  } catch (e) {
+    sendErr(e, res);
+  }
+});
 
 router.get('/task-meta', async (_req, res) => {
   try {

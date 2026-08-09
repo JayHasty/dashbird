@@ -7,6 +7,10 @@ import {
   gmailWebMessageUrl,
   wireGmailOpenAnchor,
 } from '../lib/gmail-open-url.js';
+import {
+  notifyTaskCreated,
+  readTasksProjectId,
+} from '../lib/task-bridge.js';
 
 const CACHE_KEY = 'gmail-daily-summary';
 const CACHE_MAX_MS = 6 * 60 * 60 * 1000;
@@ -632,6 +636,49 @@ export function mountGmailSummaryMobile(root) {
       });
     });
 
+    const createTask = document.createElement('button');
+    createTask.type = 'button';
+    createTask.className = 'mobile-mail__action mobile-mail__action--task';
+    createTask.textContent = 'Make task';
+    createTask.setAttribute('aria-label', `Make task from ${String(item.title || 'item')}`);
+    createTask.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      createTask.disabled = true;
+      try {
+        const projectId = readTasksProjectId();
+        const r = await fetch(
+          `/api/gmail-daily-summary/items/${encodeURIComponent(id)}/create-task`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(projectId != null ? { projectId } : {}),
+          },
+        );
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.ok === false) throw new Error(j.error || j.detail || 'create_task_failed');
+        items = Array.isArray(j.items) ? j.items : items.filter((x) => x.id !== id);
+        renderList();
+        persistCache();
+        if (j.todo?.id) {
+          notifyTaskCreated({
+            id: String(j.todo.id),
+            text: String(j.todo.text || item.title || '').trim(),
+            projectId: j.todo.projectId != null ? Number(j.todo.projectId) : projectId,
+            dueDate: j.dueDate || null,
+          });
+        }
+        showStatus(
+          j.dueDate
+            ? `Added to Tasks · due ${formatDeadline(j.dueDate)}`
+            : 'Added to Tasks',
+        );
+      } catch (err) {
+        showStatus(String(err?.message || err), true);
+        createTask.disabled = false;
+      }
+    });
+
     const primary = Array.isArray(item.sources) && item.sources.length ? item.sources[0] : null;
     const webUrl = String(item.replyUrl || '').trim() || gmailWebMessageUrl(primary);
     const mailtoUrl = !webUrl ? gmailMailtoFallbackUrl(primary) : '';
@@ -659,7 +706,7 @@ export function mountGmailSummaryMobile(root) {
     openLink.className = 'mobile-mail__action mobile-mail__action--open';
     openRow.append(openLink);
 
-    actions.append(upBtn, downBtn, dismissBtn);
+    actions.append(upBtn, downBtn, dismissBtn, createTask);
     card.append(head, companyEl, mailboxEl, meta, blurb, openRow, actions);
 
     if (item.unpinDeleteAt) scheduleUnpinRemoval(id, item.unpinDeleteAt);

@@ -90,12 +90,6 @@ export const DASHBOARD_MONITORING_SOURCES = [
     source: 'Computed at dashboard coordinates (astronomy-engine; civil night + altitude checks)',
   },
   {
-    id: 'sky_annular',
-    group: 'Sky & space',
-    label: 'Sky strip — annular eclipse (world)',
-    source: 'NASA GSFC eclipse decade HTML (live fetch each /api/sky-events request)',
-  },
-  {
     id: 'sky_aircraft',
     group: 'Sky & space',
     label: 'Sky strip — aircraft nearby (ADS-B)',

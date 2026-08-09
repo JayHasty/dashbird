@@ -85,7 +85,6 @@ export const DASHBOARD_SETTING_VARIABLES = [
   { key: 'SECONDARY_WATCH_ZIP', group: 'Location & weather', label: 'Secondary ZIP override (env)', source: '.env or Settings → Secondary ZIP (data/secondary-watch-zip.json)' },
   { key: 'AWAY_BASE_PATH', group: 'Location & weather', label: 'Away base store path', source: '.env or data/away-base.json (Settings → Away base)' },
   { key: 'NWS_USER_AGENT', group: 'Location & weather', label: 'NWS API User-Agent', source: '.env (required by api.weather.gov)' },
-  { key: 'SKY_ANNULAR_ECLIPSE_NASA', group: 'Sky & space', label: 'Live NASA annular eclipse row', source: '.env (0 disables)' },
   { key: 'SKY_DEBUG_GEOMAGNETIC_ACTIVE', group: 'Sky & space', label: 'Force geomagnetic UI (G2 preview)', source: '.env debug only' },
   { key: 'GEOELECTRIC_FIELD', group: 'Sky & space', label: 'Geoelectric field panel', source: '.env (0 disables; shown above G1 only)' },
   { key: 'MAGNETOSPHERE', group: 'Sky & space', label: 'Magnetosphere animation panel', source: '.env (0 disables; shown above G1 only)' },

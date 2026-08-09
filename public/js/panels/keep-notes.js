@@ -26,6 +26,24 @@ export function mountKeepNotes(root) {
   composeBody.rows = 1;
   composeBody.maxLength = 20000;
 
+  const composeCatRow = document.createElement('div');
+  composeCatRow.className = 'keep-notes__cat-row';
+
+  const composeCatSelect = document.createElement('select');
+  composeCatSelect.className = 'keep-notes__cat-select';
+  composeCatSelect.setAttribute('aria-label', 'Add to collection');
+  composeCatSelect.title = 'Add to collection';
+
+  const composeNewCat = document.createElement('input');
+  composeNewCat.type = 'text';
+  composeNewCat.className = 'keep-notes__cat-new';
+  composeNewCat.placeholder = 'New collection name';
+  composeNewCat.maxLength = 48;
+  composeNewCat.autocomplete = 'off';
+  composeNewCat.hidden = true;
+
+  composeCatRow.append(composeCatSelect, composeNewCat);
+
   const PIN_ICON =
     '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H8c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1.03-1 1.03 1v-7H19v-2c-1.66 0-3-1.34-3-3z"/></svg>';
   const IMAGE_ICON =
@@ -36,6 +54,122 @@ export function mountKeepNotes(root) {
     '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>';
   const SEND_ICON =
     '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>';
+  const CHECKLIST_ICON =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+
+  /** Keep Takeout / import format for checklist lines in note body. */
+  const CHECK_OPEN = '\u2610';
+  const CHECK_DONE = '\u2611';
+  const CHECK_LINE_RE = /^([\u2610\u2611])(?:[ \t]+(.*))?$/;
+
+  /**
+   * @param {string} line
+   * @returns {{ checked: boolean, text: string } | null}
+   */
+  function parseCheckLine(line) {
+    const m = String(line || '').match(CHECK_LINE_RE);
+    if (!m) return null;
+    return { checked: m[1] === CHECK_DONE, text: m[2] != null ? m[2] : '' };
+  }
+
+  /**
+   * @param {string} body
+   */
+  function bodyHasChecklist(body) {
+    return String(body || '')
+      .split('\n')
+      .some((line) => parseCheckLine(line));
+  }
+
+  /**
+   * @param {boolean} checked
+   * @param {string} text
+   */
+  function formatCheckLine(checked, text) {
+    const mark = checked ? CHECK_DONE : CHECK_OPEN;
+    const t = String(text || '');
+    return t ? `${mark} ${t}` : mark;
+  }
+
+  /**
+   * @param {string} body
+   * @param {number} lineIndex
+   */
+  function toggleBodyChecklistLine(body, lineIndex) {
+    const lines = String(body || '').split('\n');
+    const parsed = parseCheckLine(lines[lineIndex] ?? '');
+    if (!parsed) return String(body || '');
+    lines[lineIndex] = formatCheckLine(!parsed.checked, parsed.text);
+    return lines.join('\n');
+  }
+
+  /**
+   * Insert or convert the current textarea line into a checklist item.
+   * @param {HTMLTextAreaElement} textarea
+   */
+  function insertChecklistLine(textarea) {
+    const value = textarea.value;
+    const start = textarea.selectionStart ?? value.length;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const lineEndIdx = value.indexOf('\n', start);
+    const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
+    const line = value.slice(lineStart, lineEnd);
+    const parsed = parseCheckLine(line);
+    if (parsed) {
+      const addition = `\n${CHECK_OPEN} `;
+      const next = value.slice(0, lineEnd) + addition + value.slice(lineEnd);
+      textarea.value = next;
+      const caret = lineEnd + addition.length;
+      textarea.setSelectionRange(caret, caret);
+    } else if (!line.trim()) {
+      const next = `${value.slice(0, lineStart)}${CHECK_OPEN} ${value.slice(lineEnd)}`;
+      textarea.value = next;
+      const caret = lineStart + `${CHECK_OPEN} `.length;
+      textarea.setSelectionRange(caret, caret);
+    } else {
+      const next = `${value.slice(0, lineStart)}${CHECK_OPEN} ${line}${value.slice(lineEnd)}`;
+      textarea.value = next;
+      const caret = lineStart + `${CHECK_OPEN} `.length + line.length;
+      textarea.setSelectionRange(caret, caret);
+    }
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.focus();
+  }
+
+  /**
+   * Continue checklist on Enter; blank item exits checklist mode (Keep-style).
+   * @param {KeyboardEvent} e
+   * @param {HTMLTextAreaElement} textarea
+   */
+  function handleChecklistKeydown(e, textarea) {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    const value = textarea.value;
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? start;
+    if (start !== end) return;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const lineEndIdx = value.indexOf('\n', start);
+    const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
+    const line = value.slice(lineStart, lineEnd);
+    const parsed = parseCheckLine(line);
+    if (!parsed) return;
+    e.preventDefault();
+    const itemText = parsed.text.trim();
+    if (!itemText && start === lineEnd) {
+      const dropEnd = lineEnd < value.length && value[lineEnd] === '\n' ? lineEnd + 1 : lineEnd;
+      const next = value.slice(0, lineStart) + value.slice(dropEnd);
+      textarea.value = next;
+      textarea.setSelectionRange(lineStart, lineStart);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    const insertion = `\n${CHECK_OPEN} `;
+    const next = value.slice(0, start) + insertion + value.slice(end);
+    textarea.value = next;
+    const caret = start + insertion.length;
+    textarea.setSelectionRange(caret, caret);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 
   const composeActions = document.createElement('div');
   composeActions.className = 'keep-notes__compose-actions';
@@ -48,6 +182,13 @@ export function mountKeepNotes(root) {
   composePinBtn.setAttribute('aria-label', 'Pin');
   composePinBtn.setAttribute('aria-pressed', 'false');
   composePinBtn.innerHTML = PIN_ICON;
+
+  const composeCheckBtn = document.createElement('button');
+  composeCheckBtn.type = 'button';
+  composeCheckBtn.className = 'keep-notes__btn keep-notes__btn--icon';
+  composeCheckBtn.title = 'Add checklist item';
+  composeCheckBtn.setAttribute('aria-label', 'Add checklist item');
+  composeCheckBtn.innerHTML = CHECKLIST_ICON;
 
   const composeImageInput = document.createElement('input');
   composeImageInput.type = 'file';
@@ -78,9 +219,26 @@ export function mountKeepNotes(root) {
   composeSave.className = 'keep-notes__btn keep-notes__btn--primary';
   composeSave.textContent = 'Add';
 
-  composeActions.append(composePinBtn, composeImageBtn, composeVoiceBtn, composeClose, composeSave);
-  compose.append(composeTitle, composeBody, composeActions);
+  composeActions.append(
+    composePinBtn,
+    composeCheckBtn,
+    composeImageBtn,
+    composeVoiceBtn,
+    composeClose,
+    composeSave,
+  );
+  compose.append(composeTitle, composeBody, composeCatRow, composeActions);
   document.body.append(composeImageInput);
+
+  const collectionFilterRow = document.createElement('div');
+  collectionFilterRow.className = 'keep-notes__collection-filter';
+
+  const collectionFilterSelect = document.createElement('select');
+  collectionFilterSelect.className = 'keep-notes__cat-select keep-notes__collection-filter-select';
+  collectionFilterSelect.setAttribute('aria-label', 'Filter by collection');
+  collectionFilterSelect.title = 'Filter by collection';
+
+  collectionFilterRow.append(collectionFilterSelect);
 
   const scroll = document.createElement('div');
   scroll.className = 'keep-notes__scroll';
@@ -140,11 +298,15 @@ export function mountKeepNotes(root) {
   status.hidden = true;
   status.setAttribute('aria-live', 'polite');
 
-  shell.append(compose, selectBar, scroll, status);
+  shell.append(compose, collectionFilterRow, selectBar, scroll, status);
   root.append(shell);
 
   /** @type {Array<object>} */
   let notes = [];
+  /** @type {string[]} */
+  let categories = [];
+  /** @type {string} */
+  let collectionFilter = '';
   /** @type {object | null} */
   let editingNote = null;
   /** @type {MediaRecorder | null} */
@@ -185,6 +347,120 @@ export function mountKeepNotes(root) {
   function sortNotes() {
     notes.sort(compareNotes);
   }
+
+  /**
+   * @param {HTMLSelectElement} select
+   * @param {HTMLInputElement} newInput
+   * @param {string} [selected]
+   */
+  function populateCategorySelect(select, newInput, selected = '') {
+    const current = String(selected || '').trim();
+    select.replaceChildren();
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'Add to collection';
+    select.appendChild(blank);
+    const titles = [...categories];
+    if (current && !titles.some((t) => t.toLowerCase() === current.toLowerCase())) {
+      titles.push(current);
+    }
+    for (const t of titles) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      select.appendChild(opt);
+    }
+    const newOpt = document.createElement('option');
+    newOpt.value = '__new__';
+    newOpt.textContent = '+ New collection…';
+    select.appendChild(newOpt);
+    if (current && titles.some((t) => t === current)) {
+      select.value = current;
+    } else if (current) {
+      const match = titles.find((t) => t.toLowerCase() === current.toLowerCase());
+      select.value = match || '';
+    } else {
+      select.value = '';
+    }
+    const isNew = select.value === '__new__';
+    newInput.hidden = !isNew;
+    if (!isNew) newInput.value = '';
+  }
+
+  function populateCollectionFilter() {
+    const prev = collectionFilter;
+    collectionFilterSelect.replaceChildren();
+    const all = document.createElement('option');
+    all.value = '';
+    all.textContent = 'All collections';
+    collectionFilterSelect.appendChild(all);
+    for (const t of categories) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      collectionFilterSelect.appendChild(opt);
+    }
+    const none = document.createElement('option');
+    none.value = '__none__';
+    none.textContent = 'No collection';
+    collectionFilterSelect.appendChild(none);
+    if (prev === '__none__') {
+      collectionFilterSelect.value = '__none__';
+    } else if (prev) {
+      const match = categories.find((t) => t.toLowerCase() === prev.toLowerCase());
+      collectionFilterSelect.value = match || '';
+      collectionFilter = match || '';
+    } else {
+      collectionFilterSelect.value = '';
+    }
+  }
+
+  /**
+   * @param {object} note
+   * @returns {boolean}
+   */
+  function noteMatchesCollectionFilter(note) {
+    if (!collectionFilter) return true;
+    const cat = String(note.category || '').trim();
+    if (collectionFilter === '__none__') return !cat;
+    return cat.toLowerCase() === collectionFilter.toLowerCase();
+  }
+
+  collectionFilterSelect.addEventListener('change', () => {
+    collectionFilter = collectionFilterSelect.value;
+    renderNotes();
+  });
+
+  /**
+   * @param {HTMLSelectElement} select
+   * @param {HTMLInputElement} newInput
+   * @returns {string}
+   */
+  function resolveCategoryValue(select, newInput) {
+    if (select.value === '__new__') return newInput.value.trim();
+    return String(select.value || '').trim();
+  }
+
+  /**
+   * @param {HTMLSelectElement} select
+   * @param {HTMLInputElement} newInput
+   */
+  function wireCategorySelect(select, newInput) {
+    select.addEventListener('change', () => {
+      const isNew = select.value === '__new__';
+      newInput.hidden = !isNew;
+      if (isNew) {
+        newInput.focus();
+      } else {
+        newInput.value = '';
+      }
+    });
+  }
+
+  wireCategorySelect(composeCatSelect, composeNewCat);
+  composeCatSelect.addEventListener('focus', () => expandCompose(true));
+  composeNewCat.addEventListener('focus', () => expandCompose(true));
+  populateCategorySelect(composeCatSelect, composeNewCat, '');
 
   /**
    * @param {HTMLElement} grid
@@ -408,6 +684,98 @@ export function mountKeepNotes(root) {
   }
 
   /**
+   * @param {HTMLElement} bodyEl
+   * @param {object} note
+   */
+  function fillCardBody(bodyEl, note) {
+    const body = String(note.body || '');
+    bodyEl.replaceChildren();
+    bodyEl.classList.toggle('keep-notes__card-body--checklist', bodyHasChecklist(body));
+    if (!bodyHasChecklist(body)) {
+      bodyEl.textContent = body.trim();
+      return;
+    }
+    const lines = body.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const parsed = parseCheckLine(line);
+      if (parsed) {
+        const row = document.createElement('label');
+        row.className = 'keep-notes__check-item';
+        if (parsed.checked) row.classList.add('keep-notes__check-item--done');
+        row.addEventListener('click', (e) => e.stopPropagation());
+        row.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'keep-notes__check-item-input';
+        cb.checked = parsed.checked;
+        cb.setAttribute('aria-label', parsed.text ? `Toggle: ${parsed.text}` : 'Toggle checklist item');
+        const lineIndex = i;
+        cb.addEventListener('change', () => {
+          void toggleChecklistItem(note.id, lineIndex);
+        });
+
+        const text = document.createElement('span');
+        text.className = 'keep-notes__check-item-text';
+        text.textContent = parsed.text || ' ';
+
+        row.append(cb, text);
+        bodyEl.append(row);
+      } else if (line.length) {
+        const plain = document.createElement('div');
+        plain.className = 'keep-notes__check-plain';
+        plain.textContent = line;
+        bodyEl.append(plain);
+      } else if (i < lines.length - 1) {
+        const gap = document.createElement('div');
+        gap.className = 'keep-notes__check-plain keep-notes__check-plain--gap';
+        gap.textContent = '\u00a0';
+        bodyEl.append(gap);
+      }
+    }
+  }
+
+  /**
+   * @param {string} noteId
+   * @param {number} lineIndex
+   */
+  async function toggleChecklistItem(noteId, lineIndex) {
+    const note = notes.find((n) => n.id === noteId);
+    if (!note) return;
+    const nextBody = toggleBodyChecklistLine(note.body || '', lineIndex);
+    if (nextBody === (note.body || '')) return;
+    const prevBody = note.body;
+    note.body = nextBody;
+    if (editingNote?.id === noteId) {
+      editingNote = { ...editingNote, body: nextBody };
+      editorBody.value = nextBody;
+    }
+    const card = root.querySelector(`.keep-notes__card[data-id="${CSS.escape(noteId)}"]`);
+    const bodyEl = card?.querySelector('.keep-notes__card-body');
+    if (bodyEl) fillCardBody(/** @type {HTMLElement} */ (bodyEl), note);
+    try {
+      const r = await fetch(`/api/keep-notes/${encodeURIComponent(noteId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: nextBody }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'save failed');
+      notes = notes.map((n) => (n.id === noteId ? data.note : n));
+      if (editingNote?.id === noteId) editingNote = data.note;
+    } catch (e) {
+      note.body = prevBody;
+      if (editingNote?.id === noteId) {
+        editingNote = { ...editingNote, body: prevBody };
+        editorBody.value = prevBody;
+      }
+      if (bodyEl) fillCardBody(/** @type {HTMLElement} */ (bodyEl), note);
+      showStatus(String(e?.message || e), true);
+    }
+  }
+
+  /**
    * @param {HTMLElement} card
    * @param {object} note
    */
@@ -420,6 +788,7 @@ export function mountKeepNotes(root) {
     const dragHandle = card.querySelector('.keep-notes__card-drag');
     const titleEl = card.querySelector('.keep-notes__card-title');
     const bodyEl = card.querySelector('.keep-notes__card-body');
+    const catEl = card.querySelector('.keep-notes__card-cat');
     const mediaEl = card.querySelector('.keep-notes__card-media');
     const pinBtn = card.querySelector('.keep-notes__card-pin');
 
@@ -428,13 +797,18 @@ export function mountKeepNotes(root) {
 
     const title = String(note.title || '').trim();
     const body = String(note.body || '').trim();
+    const category = String(note.category || '').trim();
     if (titleEl) {
       titleEl.textContent = title;
       titleEl.hidden = !title;
     }
     if (bodyEl) {
-      bodyEl.textContent = body;
+      fillCardBody(bodyEl, note);
       bodyEl.hidden = !body;
+    }
+    if (catEl) {
+      catEl.textContent = category;
+      catEl.hidden = !category;
     }
     if (pinBtn) {
       pinBtn.setAttribute('aria-pressed', note.pinned ? 'true' : 'false');
@@ -525,8 +899,12 @@ export function mountKeepNotes(root) {
     const titleEl = document.createElement('h4');
     titleEl.className = 'keep-notes__card-title';
 
-    const bodyEl = document.createElement('p');
+    const bodyEl = document.createElement('div');
     bodyEl.className = 'keep-notes__card-body';
+
+    const catEl = document.createElement('span');
+    catEl.className = 'keep-notes__card-cat';
+    catEl.hidden = true;
 
     const mediaEl = document.createElement('div');
     mediaEl.className = 'keep-notes__card-media';
@@ -542,7 +920,7 @@ export function mountKeepNotes(root) {
     grip.setAttribute('aria-hidden', 'true');
     dragHandle.append(grip);
 
-    card.append(checkEl, dragHandle, pinBtn, moreBtn, delBtn, titleEl, bodyEl, mediaEl);
+    card.append(checkEl, dragHandle, pinBtn, moreBtn, delBtn, titleEl, bodyEl, catEl, mediaEl);
 
     dragHandle.addEventListener('dragstart', (e) => {
       if (selectMode) {
@@ -609,10 +987,16 @@ export function mountKeepNotes(root) {
     pinnedGrid.replaceChildren();
     othersGrid.replaceChildren();
     sortNotes();
-    const pinned = notes.filter((n) => n.pinned);
-    const others = notes.filter((n) => !n.pinned);
+    const visible = notes.filter(noteMatchesCollectionFilter);
+    const pinned = visible.filter((n) => n.pinned);
+    const others = visible.filter((n) => !n.pinned);
     pinnedSection.hidden = pinned.length === 0;
-    empty.hidden = notes.length > 0;
+    empty.hidden = visible.length > 0;
+    if (!notes.length) {
+      empty.textContent = 'No notes yet — jot something above.';
+    } else if (!visible.length) {
+      empty.textContent = 'No notes in this collection.';
+    }
 
     for (const note of pinned) {
       const card = createCard();
@@ -691,8 +1075,34 @@ export function mountKeepNotes(root) {
     }
   }
 
+  async function loadCategories() {
+    try {
+      const r = await fetch('/api/keep-notes/categories', { cache: 'no-store' });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'categories failed');
+      categories = Array.isArray(data.categories) ? data.categories : [];
+    } catch {
+      categories = [
+        'recommendations',
+        'music',
+        'biz ideas',
+        'feature requests',
+        'gym notes',
+        'logistics notes',
+      ];
+    }
+    const composeSelected = resolveCategoryValue(composeCatSelect, composeNewCat);
+    populateCategorySelect(
+      composeCatSelect,
+      composeNewCat,
+      composeCatSelect.value === '__new__' ? '' : composeSelected,
+    );
+    populateCollectionFilter();
+  }
+
   async function loadNotes() {
     try {
+      await loadCategories();
       const r = await fetch('/api/keep-notes', { cache: 'no-store' });
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'load failed');
@@ -739,7 +1149,7 @@ export function mountKeepNotes(root) {
   }
 
   /**
-   * @param {{ title?: string, body?: string, pinned?: boolean }} fields
+   * @param {{ title?: string, body?: string, pinned?: boolean, category?: string }} fields
    * @returns {Promise<object>}
    */
   async function createNote(fields) {
@@ -752,6 +1162,12 @@ export function mountKeepNotes(root) {
     if (!data.ok) throw new Error(data.error || 'create failed');
     notes.push(data.note);
     sortNotes();
+    if (fields.category) {
+      const cat = String(fields.category).trim();
+      if (cat && !categories.some((c) => c.toLowerCase() === cat.toLowerCase())) {
+        categories = [...categories, cat];
+      }
+    }
     return data.note;
   }
 
@@ -785,6 +1201,7 @@ export function mountKeepNotes(root) {
     composePinBtn.setAttribute('aria-label', 'Pin');
     composeVoiceBtn.classList.remove('keep-notes__btn--recording');
     composeVoiceBtn.title = 'Record voice note';
+    populateCategorySelect(composeCatSelect, composeNewCat, '');
     expandCompose(false);
   }
 
@@ -799,6 +1216,7 @@ export function mountKeepNotes(root) {
       if (document.activeElement !== composeBody) composeBody.focus();
     });
   });
+  composeBody.addEventListener('keydown', (e) => handleChecklistKeydown(e, composeBody));
   composeTitle.addEventListener('focus', () => expandCompose(true));
   composeClose.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -813,6 +1231,12 @@ export function mountKeepNotes(root) {
     composePinBtn.setAttribute('aria-pressed', composePinned ? 'true' : 'false');
     composePinBtn.title = composePinned ? 'Unpin' : 'Pin';
     composePinBtn.setAttribute('aria-label', composePinned ? 'Unpin' : 'Pin');
+  });
+
+  composeCheckBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    expandCompose(true);
+    insertChecklistLine(composeBody);
   });
 
   composeImageBtn.addEventListener('click', (e) => {
@@ -836,6 +1260,7 @@ export function mountKeepNotes(root) {
         title: composeTitle.value.trim(),
         body: composeBody.value.trim(),
         pinned: composePinned,
+        category: resolveCategoryValue(composeCatSelect, composeNewCat),
       });
       await uploadAttachment(note.id, {
         kind: 'image',
@@ -887,6 +1312,7 @@ export function mountKeepNotes(root) {
             title: composeTitle.value.trim(),
             body: composeBody.value.trim(),
             pinned: composePinned,
+            category: resolveCategoryValue(composeCatSelect, composeNewCat),
           });
           await uploadAttachment(note.id, {
             kind: 'voice',
@@ -914,7 +1340,12 @@ export function mountKeepNotes(root) {
     if (!title && !body) return;
     composeSave.disabled = true;
     try {
-      await createNote({ title, body, pinned: composePinned });
+      await createNote({
+        title,
+        body,
+        pinned: composePinned,
+        category: resolveCategoryValue(composeCatSelect, composeNewCat),
+      });
       renderNotes();
       resetCompose();
       showStatus('');
@@ -947,6 +1378,26 @@ export function mountKeepNotes(root) {
   editorBody.placeholder = 'Note';
   editorBody.maxLength = 20000;
 
+  const editorCatRow = document.createElement('div');
+  editorCatRow.className = 'keep-notes__cat-row';
+
+  const editorCatSelect = document.createElement('select');
+  editorCatSelect.className = 'keep-notes__cat-select';
+  editorCatSelect.setAttribute('aria-label', 'Add to collection');
+  editorCatSelect.title = 'Add to collection';
+
+  const editorNewCat = document.createElement('input');
+  editorNewCat.type = 'text';
+  editorNewCat.className = 'keep-notes__cat-new';
+  editorNewCat.placeholder = 'New collection name';
+  editorNewCat.maxLength = 48;
+  editorNewCat.autocomplete = 'off';
+  editorNewCat.hidden = true;
+
+  editorCatRow.append(editorCatSelect, editorNewCat);
+  wireCategorySelect(editorCatSelect, editorNewCat);
+  populateCategorySelect(editorCatSelect, editorNewCat, '');
+
   const editorMedia = document.createElement('div');
   editorMedia.className = 'keep-notes__editor-media';
   editorMedia.hidden = true;
@@ -961,6 +1412,13 @@ export function mountKeepNotes(root) {
   pinEditorBtn.setAttribute('aria-label', 'Pin');
   pinEditorBtn.innerHTML =
     '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H8c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1.03-1 1.03 1v-7H19v-2c-1.66 0-3-1.34-3-3z"/></svg>';
+
+  const checkEditorBtn = document.createElement('button');
+  checkEditorBtn.type = 'button';
+  checkEditorBtn.className = 'keep-notes__btn keep-notes__btn--icon';
+  checkEditorBtn.title = 'Add checklist item';
+  checkEditorBtn.setAttribute('aria-label', 'Add checklist item');
+  checkEditorBtn.innerHTML = CHECKLIST_ICON;
 
   const imageInput = document.createElement('input');
   imageInput.type = 'file';
@@ -1003,13 +1461,26 @@ export function mountKeepNotes(root) {
   closeEditorBtn.className = 'keep-notes__btn keep-notes__btn--ghost';
   closeEditorBtn.textContent = 'Close';
 
-  editorToolbar.append(pinEditorBtn, imageBtn, voiceBtn, sendEditorBtn, deleteBtn, closeEditorBtn);
-  editor.append(editorTitle, editorBody, editorMedia, editorToolbar);
+  editorToolbar.append(
+    pinEditorBtn,
+    checkEditorBtn,
+    imageBtn,
+    voiceBtn,
+    sendEditorBtn,
+    deleteBtn,
+    closeEditorBtn,
+  );
+  editor.append(editorTitle, editorBody, editorCatRow, editorMedia, editorToolbar);
   overlay.append(editor);
   document.body.append(overlay);
   document.body.append(imageInput);
 
   editor.addEventListener('click', (e) => e.stopPropagation());
+  editorBody.addEventListener('keydown', (e) => handleChecklistKeydown(e, editorBody));
+  checkEditorBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    insertChecklistLine(editorBody);
+  });
 
   /**
    * @param {{ pinned?: boolean } | null | undefined} note
@@ -1056,6 +1527,7 @@ export function mountKeepNotes(root) {
     editingNote = note;
     editorTitle.value = note.title || '';
     editorBody.value = note.body || '';
+    populateCategorySelect(editorCatSelect, editorNewCat, note.category || '');
     syncPinEditorBtn(note);
     renderEditorMedia(note);
     overlay.hidden = false;
@@ -1075,17 +1547,24 @@ export function mountKeepNotes(root) {
    * @param {string} id
    * @param {string} title
    * @param {string} body
+   * @param {string} [category]
    */
-  async function persistNote(id, title, body) {
+  async function persistNote(id, title, body, category) {
     try {
       const r = await fetch(`/api/keep-notes/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, body }),
+        body: JSON.stringify({ title, body, category }),
       });
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'save failed');
       notes = notes.map((n) => (n.id === id ? data.note : n));
+      const cat = String(category || '').trim();
+      if (cat && !categories.some((c) => c.toLowerCase() === cat.toLowerCase())) {
+        categories = [...categories, cat];
+        populateCategorySelect(composeCatSelect, composeNewCat, resolveCategoryValue(composeCatSelect, composeNewCat));
+        populateCollectionFilter();
+      }
       sortNotes();
       renderNotes();
       return data.note;
@@ -1100,8 +1579,9 @@ export function mountKeepNotes(root) {
     const { id } = editingNote;
     const title = editorTitle.value.trim();
     const body = editorBody.value;
+    const category = resolveCategoryValue(editorCatSelect, editorNewCat);
     closeEditor();
-    void persistNote(id, title, body);
+    void persistNote(id, title, body, category);
   }
 
   closeEditorBtn.addEventListener('click', (e) => {

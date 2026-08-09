@@ -685,7 +685,7 @@ function fillSkyEventStrip(container, timeZone) {
   container.className = 'hero-astro-middle';
   container.setAttribute(
     'aria-label',
-    'Sky & space: calendar events in the next 24 hours; ISS, satellite train, and launch passes within 3 days with look direction; aircraft nearby when in range (refreshes about every 90 seconds); optional annular-eclipse row from live NASA tables when the next land annularity is within ~6 months; Yosemite moonbow when active',
+    'Sky & space: calendar events in the next 24 hours; ISS, satellite train, and launch passes within 3 days with look direction; aircraft nearby when in range (refreshes about every 90 seconds); total solar/lunar eclipse heads-up when upcoming; Yosemite moonbow when active',
   );
 
   if (container._skyStripPollTimer) {

@@ -7,7 +7,6 @@ import {
 import { mergeGeomagneticStormGScale } from '../lib/geomagnetic-storm-merge.js';
 import { mergeAuroraWithSwpc } from '../lib/swpc-aurora.js';
 import { mergeNakedEyePlanetsWithComputed } from '../lib/naked-eye-planets.js';
-import { mergeAnnularEclipseLiveRows } from '../lib/merge-annular-eclipse-live.js';
 import { planetIconUrl } from '../lib/planet-icons.js';
 import { resolveDashboardWeatherLatLon } from '../lib/hero-weather-location.js';
 import { mergeSightingHeadsUp } from '../lib/sky-sighting-heads-up.js';
@@ -60,7 +59,6 @@ router.get('/', async (req, res) => {
       windowMs,
       HERO_TZ,
     );
-    active = await mergeAnnularEclipseLiveRows(active, now);
     active = mergeEclipseHeadsUp(active, data.events, now, windowMs);
     active = mergeSightingHeadsUp(active, data.events, now, windowMs, HERO_TZ, {
       lat,
@@ -94,17 +92,6 @@ router.get('/', async (req, res) => {
               ? ev.planetLabel.trim()
               : baseMeta.label;
           typeMeta = { ...baseMeta, icon, label };
-        } else if (ev.type === 'annular_eclipse_world') {
-          const solarMeta = typeById.solar_eclipse;
-          const icon =
-            (typeof solarMeta?.icon === 'string' && solarMeta.icon.trim() !== ''
-              ? solarMeta.icon.trim()
-              : null) || baseMeta.icon;
-          const forecastPatch =
-            typeof ev.forecastUrl === 'string' && /^https?:\/\//i.test(ev.forecastUrl.trim())
-              ? { forecastUrl: ev.forecastUrl.trim() }
-              : {};
-          typeMeta = { ...baseMeta, icon, ...forecastPatch };
         } else if (ev.type === 'aircraft') {
           const forecastPatch =
             typeof ev.forecastUrl === 'string' && /^https?:\/\//i.test(ev.forecastUrl.trim())

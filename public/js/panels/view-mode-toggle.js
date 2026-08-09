@@ -1,4 +1,4 @@
-import { readViewMode, writeViewMode } from '../lib/view-mode.js';
+import { detectMobileDevice, readViewMode, writeViewMode } from '../lib/view-mode.js';
 
 /**
  * Phone / desktop icons in the topbar. Changing mode reloads so the other
@@ -11,6 +11,7 @@ export function mountViewModeToggle(root) {
   root.classList.add('view-mode-toggle');
 
   const current = readViewMode();
+  const phoneUa = detectMobileDevice();
 
   /**
    * @param {'mobile' | 'desktop'} mode
@@ -28,6 +29,8 @@ export function mountViewModeToggle(root) {
     btn.innerHTML = svgHtml;
     btn.addEventListener('click', () => {
       if (readViewMode() === mode) return;
+      // Desktop layout on a phone UA overloads cloud auth; keep phone on mobile.
+      if (phoneUa && mode === 'desktop') return;
       writeViewMode(mode);
       location.reload();
     });
@@ -48,8 +51,12 @@ export function mountViewModeToggle(root) {
     '<path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 20.5h8M12 17v3.5"/>' +
     '</svg>';
 
-  root.append(
-    makeBtn('desktop', 'View desktop', desktopSvg),
-    makeBtn('mobile', 'View mobile', phoneSvg),
-  );
+  if (phoneUa) {
+    root.append(makeBtn('mobile', 'Mobile view', phoneSvg));
+  } else {
+    root.append(
+      makeBtn('desktop', 'View desktop', desktopSvg),
+      makeBtn('mobile', 'View mobile', phoneSvg),
+    );
+  }
 }

@@ -25,17 +25,20 @@ export function detectMobileDevice() {
 }
 
 /**
- * Explicit icon pick wins; otherwise auto-pick mobile on phones.
+ * Phones always get the lean mobile shell (desktop boot on a phone stalls hard
+ * on cloud: many parallel assets each paying forward_auth / basic-auth cost).
+ * On non-phone UAs, an explicit icon pick wins; otherwise desktop.
  * @returns {'mobile' | 'desktop'}
  */
 export function readViewMode() {
+  if (detectMobileDevice()) return 'mobile';
   try {
     const v = localStorage.getItem(VIEW_MODE_KEY);
     if (v === 'mobile' || v === 'desktop') return v;
   } catch {
     /* ignore */
   }
-  return detectMobileDevice() ? 'mobile' : 'desktop';
+  return 'desktop';
 }
 
 /**

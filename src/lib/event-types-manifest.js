@@ -9,7 +9,6 @@ export const EVENT_TYPE_LIVE_URLS = {
   geomagnetic: 'https://www.swpc.noaa.gov/products/noaa-scales',
   lunar_eclipse: 'https://www.timeanddate.com/eclipse/',
   solar_eclipse: 'https://www.timeanddate.com/eclipse/solar.html',
-  annular_eclipse_world: 'https://science.nasa.gov/eclipses/',
   comet: 'https://in-the-sky.org/news.php',
   supermoon: 'https://science.nasa.gov/solar-system/skywatching/whats-up/',
   meteor: 'https://www.amsmeteors.org/meteor-showers/meteor-shower-calendar/',
@@ -62,10 +61,10 @@ export const SKY_TYPE_DATA_SOURCES = {
     'NOAA SWPC Ovation + planetary K at dashboard coordinates; calendar aurora rows dropped when live fetch works.',
   geomagnetic:
     'NOAA SWPC noaa-scales.json + peak planetary K (3h forecast product; 1m fallback); calendar geomagnetic rows dropped when live merge runs.',
-  lunar_eclipse: 'Curated rows in src/data/sky-events-calendar.json (Time and Date / NASA-style sources).',
-  solar_eclipse: 'Curated rows in src/data/sky-events-calendar.json.',
-  annular_eclipse_world:
-    'NASA GSFC Fred Espenak decade HTML (parsed each request); SKY_ANNULAR_ECLIPSE_NASA=0 disables.',
+  lunar_eclipse:
+    'Curated total-eclipse rows in src/data/sky-events-calendar.json (Time and Date / NASA-style sources). Annular/partial not shown.',
+  solar_eclipse:
+    'Curated total-eclipse rows in src/data/sky-events-calendar.json. Annular/partial not shown.',
   comet: 'Curated rows in src/data/sky-events-calendar.json.',
   supermoon:
     'Curated rows in sky-events-calendar.json; strip only when listedSupermoon: true and LA date within ±1 day of peakAt.',

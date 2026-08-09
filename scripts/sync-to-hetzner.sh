@@ -28,8 +28,10 @@ else
   echo "  (no local .env — configure on server from deploy/env.hetzner.example)"
 fi
 
-echo "[dashbird] Syncing persistent data/"
-rsync -avz "$ROOT/data/" "${HOST}:${REMOTE_DIR}/data/" 2>/dev/null || mkdir -p "$ROOT/data" && rsync -avz "$ROOT/data/" "${HOST}:${REMOTE_DIR}/data/" || true
+echo "[dashbird] Syncing persistent data/ (excluding Keep Notes)"
+mkdir -p "$ROOT/data"
+rsync -avz --exclude keep-notes/ --exclude keep-import/ \
+  "$ROOT/data/" "${HOST}:${REMOTE_DIR}/data/" || true
 
 for f in bookmarks-personal.json notes.md last-backup.txt; do
   if [[ -f "$ROOT/public/data/$f" ]]; then
