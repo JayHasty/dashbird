@@ -594,6 +594,20 @@ async function renderTaskCardModal(opts) {
   assignWrap.append(assignSummary, assignRow);
   card.append(assignWrap);
 
+  // Bottom matches task edit overlays: full-width Schedule + Waiting on, then actions.
+  const bottom = document.createElement('div');
+  bottom.className = 'tasks-random__bottom';
+
+  const scheduleSlot = document.createElement('div');
+  scheduleSlot.className = 'tasks-random__schedule-slot';
+  const sched = createScheduleControl({
+    wrapClass: 'task-schedule tasks-random__schedule-wrap tasks-random__bottom-schedule-wrap',
+    buttonClass: 'tasks-random__secondary tasks-random__schedule tasks-random__bottom-schedule',
+    overdueClass: 'task-schedule__overdue',
+  });
+  sched.sync(taskMeta);
+  scheduleSlot.append(sched.wrap);
+
   const waitingSlot = document.createElement('div');
   waitingSlot.className = 'tasks-random__waiting';
   const waiting = createWaitingOnControl({
@@ -608,7 +622,6 @@ async function renderTaskCardModal(opts) {
     },
   });
   waitingSlot.append(waiting.wrap);
-  card.append(waitingSlot);
 
   const actions = document.createElement('div');
   actions.className = 'tasks-random__actions';
@@ -620,18 +633,14 @@ async function renderTaskCardModal(opts) {
   skipProjectBtn.type = 'button';
   skipProjectBtn.className = 'tasks-random__secondary';
   skipProjectBtn.textContent = 'Skip project';
-  const sched = createScheduleControl({
-    wrapClass: 'task-schedule tasks-random__schedule-wrap',
-    buttonClass: 'tasks-random__secondary tasks-random__schedule',
-    overdueClass: 'task-schedule__overdue',
-  });
-  sched.sync(taskMeta);
   const doneBtn = document.createElement('button');
   doneBtn.type = 'button';
   doneBtn.className = 'tasks-random__secondary';
   doneBtn.textContent = 'Mark done';
-  actions.append(skipBtn, skipProjectBtn, sched.wrap, doneBtn);
-  card.append(actions);
+  actions.append(skipBtn, skipProjectBtn, doneBtn);
+
+  bottom.append(scheduleSlot, waitingSlot, actions);
+  card.append(bottom);
   body.append(card);
 
   skipBtn.addEventListener('click', onSkip);

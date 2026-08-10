@@ -8,7 +8,7 @@ import {
 
 const MOBILE_TAB_KEY = 'dashbirdMobileTab';
 /** Bump when any mobile panel module changes (cache-bust dynamic imports). */
-const MOBILE_PANELS_V = 'mobile-panels-20260809-did-heal-1';
+const MOBILE_PANELS_V = 'mobile-panels-20260810-gmail-open-1';
 const PHONE_TRUSTED_DID = '1c0c1947-ad36-4032-aed5-00eb5b28e166';
 const PHONE_DEVICE_BIND = `/auth/device-bind?did=${PHONE_TRUSTED_DID}`;
 

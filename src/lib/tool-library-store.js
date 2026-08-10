@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { looksLikePublicHttpUrl } from './public-http-url.js';
+import { fixHostOwnership } from './fix-host-ownership.js';
 
 const PKG_ROOT = path.join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 
@@ -71,6 +72,7 @@ async function writeToolLibraryFile(data) {
   try {
     await fs.writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
     await fs.rename(tmp, p);
+    await fixHostOwnership(p);
   } catch (e) {
     await fs.unlink(tmp).catch(() => {});
     throw e;
@@ -258,6 +260,7 @@ export async function saveToolAsset(toolId, kind, buf, ext = 'png') {
   const name = `${toolId}-${kind}.${safeExt}`;
   const fp = path.join(dir, name);
   await fs.writeFile(fp, buf);
+  await fixHostOwnership([dir, fp]);
   return `/api/tool-library/assets/${name}`;
 }
 

@@ -518,23 +518,19 @@ export async function buildEarthEventTypesSlow() {
     const volcano = Array.isArray(kilaueaBuilt.items)
       ? kilaueaBuilt.items.find((it) => it.earthType === 'kilauea_volcano')
       : null;
-    const kQuake = Array.isArray(kilaueaBuilt.items)
-      ? kilaueaBuilt.items.find((it) => it.earthType === 'kilauea_quake')
-      : null;
     const bits = [];
     if (volcano) bits.push(`${volcano.label} — ${volcano.detailLine}`);
-    if (kQuake) bits.push(`${kQuake.label} — ${kQuake.detailLine}`);
     const volcanoActive = Boolean(volcano) || kilaueaBuilt.status?.active === true;
     rows.push({
       id: 'kilauea_volcano',
       label: 'Kīlauea (Hawaiʻi)',
       category: 'Earth',
-      active: volcanoActive || Boolean(kQuake),
+      active: volcanoActive,
       value:
         bits.join(' · ') ||
         'Inactive — not fountaining and no dated next-episode forecast',
       dataSource:
-        'USGS HANS + HVO messages · active when fountaining or dated next-episode forecast; nearby M>3 quake same format as local row',
+        'USGS HANS + HVO messages · active when fountaining or dated next-episode forecast',
     });
   } else {
     rows.push({
@@ -548,7 +544,7 @@ export async function buildEarthEventTypesSlow() {
           : 'Inactive — not fountaining and no dated next-episode forecast'
         : `Unavailable (${kilaueaBuilt.error || 'fetch failed'})`,
       dataSource:
-        'USGS HANS + HVO messages · active when fountaining or dated next-episode forecast; nearby M>3 quake same format as local row',
+        'USGS HANS + HVO messages · active when fountaining or dated next-episode forecast',
     });
   }
 

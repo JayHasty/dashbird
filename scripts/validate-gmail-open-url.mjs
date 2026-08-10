@@ -8,6 +8,7 @@ import {
   gmailDirectWebMessageUrl,
   gmailMobileOpenUrl,
   gmailNativeAppUrl,
+  gmailSearchQuery,
   gmailTargetHash,
   gmailWebMessageUrl,
   sanitizeGmailOpenSource,
@@ -25,6 +26,7 @@ const src = {
 };
 
 assert.equal(gmailTargetHash(src), 'all/19f96aac68af44e9');
+assert.equal(gmailSearchQuery(src), 'rfc822msgid:1899563979.8099968@linkedin.com');
 
 const clean = sanitizeGmailOpenSource(src);
 assert.equal(clean?.gmailId, '');
@@ -42,26 +44,33 @@ assert.equal(
 assert.ok(web.includes('#all%2F19f96aac68af44e9') || continueUrl.endsWith('#all/19f96aac68af44e9'));
 assert.equal(gmailReplyUrl(src), web);
 
-// Android: intent into Gmail app with /u/{email}/#all/{threadId}
+// Direct web URL still built for tests / non-intent use
 const direct = gmailDirectWebMessageUrl(src);
 assert.equal(direct, 'https://mail.google.com/mail/u/julia.hasty@gmail.com/#all/19f96aac68af44e9');
+
+// Android: SEARCH intent (not https VIEW — that opens inbox)
 const intent = gmailAndroidAppUrl(src, web);
-assert.match(intent, /^intent:\/\/mail\.google\.com\/mail\/u\/julia\.hasty@gmail\.com\/%23all\/19f96aac68af44e9#Intent;/);
+assert.match(intent, /^intent:#Intent;/);
+assert.match(intent, /action=android\.intent\.action\.SEARCH;/);
 assert.match(intent, /package=com\.google\.android\.gm;/);
+assert.ok(intent.includes(`S.query=${encodeURIComponent('rfc822msgid:1899563979.8099968@linkedin.com')}`));
 assert.ok(intent.includes(`S.browser_fallback_url=${encodeURIComponent(web)}`));
 assert.equal(
   gmailMobileOpenUrl(web, src, 'Mozilla/5.0 (Linux; Android 14)'),
   intent,
 );
 
-// iOS: conversation-by-thread
-assert.equal(gmailNativeAppUrl(src), 'googlegmail:///cv?th=19f96aac68af44e9');
+// iOS: search-by-rfc822 (not cv?th= which opens inbox)
+assert.equal(
+  gmailNativeAppUrl(src),
+  'googlegmail:///search?q=rfc822msgid%3A1899563979.8099968%40linkedin.com',
+);
 assert.equal(
   gmailMobileOpenUrl(web, src, 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)'),
-  'googlegmail:///cv?th=19f96aac68af44e9',
+  'googlegmail:///search?q=rfc822msgid%3A1899563979.8099968%40linkedin.com',
 );
 
-// No threadId → rfc822 search
+// No threadId → rfc822 search (web + native)
 const noThread = {
   email: 'jay.intake.box@gmail.com',
   threadId: '152651', // decimal — sanitized away
@@ -77,6 +86,10 @@ assert.equal(
   gmailDirectWebMessageUrl(noThread),
   'https://mail.google.com/mail/u/jay.intake.box@gmail.com/#search/rfc822msgid%3Aabc%40mail.example',
 );
+assert.equal(
+  gmailNativeAppUrl(noThread),
+  'googlegmail:///search?q=rfc822msgid%3Aabc%40mail.example',
+);
 
 // Distinct gmailId when no thread
 const msgOnly = {
@@ -86,5 +99,9 @@ const msgOnly = {
   rfc822MessageId: '',
 };
 assert.equal(gmailTargetHash(msgOnly), 'all/19f9fef544d420cc');
+// No search key → Android returns '' (caller uses AccountChooser web URL)
+assert.equal(gmailAndroidAppUrl(msgOnly, gmailWebMessageUrl(msgOnly)), '');
+// iOS falls back to legacy cv=THREAD/msg path form
+assert.equal(gmailNativeAppUrl(msgOnly), 'googlegmail:///cv=19f9fef544d420cc');
 
 console.log('validate-gmail-open-url: ok');

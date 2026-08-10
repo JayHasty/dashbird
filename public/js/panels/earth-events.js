@@ -217,7 +217,6 @@ function earthItemGlyph(ev) {
   if (t === 'goes_glm_lightning_max_recent') return buildGlmLightningGlyph();
   if (t === 'goes_glm_sprite_proxy') return buildGlmLightningGlyph();
   if (t === 'usgs_quake_week_max') return buildQuakeWeekGlyph();
-  if (t === 'kilauea_quake') return buildQuakeWeekGlyph();
   if (t === 'kilauea_volcano') return buildKilaueaGlyph();
   if (t === 'diablo_tarantula_mating') return buildTarantulaGlyph();
   if (t === 'oakland_salamander_surface') return buildSalamanderGlyph();
@@ -323,9 +322,6 @@ function earthItemTooltip(earthType, ev) {
   }
   if (t === 'kilauea_volcano') {
     return 'Kīlauea (Hawaiʻi): shown when fountaining or HVO posts a dated next-episode forecast; opens USGS volcano update (new tab)';
-  }
-  if (t === 'kilauea_quake') {
-    return 'Strongest earthquake near Kīlauea summit (USGS): M>3 within 30 mi of Halemaʻumaʻu; same M · depth · mi format as the local earthquake row; opens USGS event (new tab)';
   }
   if (t === 'goes_glm_lightning_max_recent') {
     return 'Strongest recent GOES Geostationary Lightning Mapper flash (AWS open-data L2 CFA) within ~200 mi of dashboard lat/lon; thumbnail opens STAR GLM mosaic (new tab)';
@@ -481,7 +477,7 @@ export function mountEarthStrip(container, opts = {}) {
     const md = typeof quakeAsOfMd === 'string' && quakeAsOfMd ? quakeAsOfMd : formatLocalQuakeMd();
     container.setAttribute(
       'aria-label',
-      `Earth events: USA-NPN spring when active, Diablo-area tarantulas, Oakland salamander heuristic, monarch migration, salmon seasons, wild edible / foraging notes, nasturtium bloom, lightning bugs at secondary ZIP (7-day heads-up before start), fall foliage at ZIP 24066, Atlantic Category 1+ storms with forecasted landfall location when parsed from NHC advisories, California earthquake${md ? ` (${md})` : ''} when strongest is M>3 within 150 mi of Oakland (24 hours after occurrence), Kīlauea eruption or nearby quake when active, GOES GLM strongest flash and optional Sprite-class proxy row when a tier match is stored (~200 mi, 7-day retention)`,
+      `Earth events: USA-NPN spring when active, Diablo-area tarantulas, Oakland salamander heuristic, monarch migration, salmon seasons, wild edible / foraging notes, nasturtium bloom, lightning bugs at secondary ZIP (7-day heads-up before start), fall foliage at ZIP 24066, Atlantic Category 1+ storms with forecasted landfall location when parsed from NHC advisories, California earthquake${md ? ` (${md})` : ''} when strongest is M>3 within 150 mi of Oakland (24 hours after occurrence), Kīlauea eruption when active, GOES GLM strongest flash and optional Sprite-class proxy row when a tier match is stored (~200 mi, 7-day retention)`,
     );
   }
 

@@ -1,16 +1,13 @@
 /**
  * Kīlauea (Hawaiʻi) status for the Earth strip + summit livestream card.
  * Alert/notice: USGS HANS public API. Short fountain updates: HVO volcano-messages HTML.
- * Nearby quakes: USGS FDSNWS (same M / depth / mi format as the local earthquake row).
  * Cameras: USGS short links → YouTube livestream video IDs.
+ * Nearby Hawaii quakes are intentionally not shown (local CA quake row only).
  */
 const KILAUEA_VNUM = '332010';
-const KILAUEA_LAT = 19.421;
-const KILAUEA_LON = -155.287;
 const KILAUEA_ELEV_FT = 4091;
 const KILAUEA_ELEV_M = 1247;
 
-const USGS_QUERY = 'https://earthquake.usgs.gov/fdsnws/event/1/query';
 const HANS_ELEVATED = 'https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes';
 const HANS_CAP = 'https://volcanoes.usgs.gov/hans-public/api/volcano/getCapElevated';
 const HANS_NEWEST = `https://volcanoes.usgs.gov/hans-public/api/volcano/newestForVolcano/${KILAUEA_VNUM}`;
@@ -19,11 +16,6 @@ const HVO_MESSAGES_URL =
 const KILAUEA_UPDATES_URL = 'https://www.usgs.gov/volcanoes/kilauea/volcano-updates';
 const SUMMIT_WEBCAMS_URL = 'https://www.usgs.gov/volcanoes/kilauea/summit-webcams';
 
-const EARTH_RADIUS_MI = 3958.7613;
-const KM_PER_MI = 1.609344;
-const QUAKE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const QUAKE_RADIUS_MI = 30;
-const MIN_MAG_EXCLUSIVE = 3;
 const FETCH_TIMEOUT_MS = 16_000;
 const UA = 'Dashbird/1.0 (dashboard Kilauea status; https://www.usgs.gov/volcanoes/kilauea)';
 
@@ -102,24 +94,6 @@ function stripHtml(raw) {
     .replace(/&gt;/gi, '>')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function haversineMiles(lat1, lon1, lat2, lon2) {
-  const r = (d) => (d * Math.PI) / 180;
-  const dLat = r(lat2 - lat1);
-  const dLon = r(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return EARTH_RADIUS_MI * c;
-}
-
-function formatDepthKmShort(depthKm) {
-  if (typeof depthKm !== 'number' || !Number.isFinite(depthKm)) return null;
-  const rounded = Math.round(depthKm * 10) / 10;
-  const s = rounded === Math.round(rounded) ? String(Math.round(rounded)) : String(rounded);
-  return `${s} km`;
 }
 
 /**
@@ -360,79 +334,6 @@ async function resolveCamera(cam) {
   }
 }
 
-async function fetchStrongestKilaueaQuake() {
-  const end = new Date();
-  const start = new Date(end.getTime() - QUAKE_WINDOW_MS);
-  const maxradiuskm = (QUAKE_RADIUS_MI * KM_PER_MI).toFixed(2);
-
-  const url = new URL(USGS_QUERY);
-  url.searchParams.set('format', 'geojson');
-  url.searchParams.set('latitude', String(KILAUEA_LAT));
-  url.searchParams.set('longitude', String(KILAUEA_LON));
-  url.searchParams.set('maxradiuskm', maxradiuskm);
-  url.searchParams.set('starttime', `${start.toISOString().split('.')[0]}Z`);
-  url.searchParams.set('endtime', `${end.toISOString().split('.')[0]}Z`);
-  url.searchParams.set('minmagnitude', '3');
-  url.searchParams.set('orderby', 'magnitude');
-  url.searchParams.set('limit', '100');
-
-  const doc = await fetchJson(url.toString());
-  const features = Array.isArray(doc?.features) ? doc.features : [];
-  let best = null;
-
-  for (const f of features) {
-    const props = f?.properties;
-    const coords = f?.geometry?.coordinates;
-    if (!props || !Array.isArray(coords) || coords.length < 2) continue;
-    const mag = Number(props.mag);
-    if (!Number.isFinite(mag) || mag <= MIN_MAG_EXCLUSIVE) continue;
-    const evLon = Number(coords[0]);
-    const evLat = Number(coords[1]);
-    if (!Number.isFinite(evLon) || !Number.isFinite(evLat)) continue;
-    const depthFromZ = coords.length >= 3 ? Number(coords[2]) : NaN;
-    const depthKm = Number.isFinite(depthFromZ)
-      ? depthFromZ
-      : typeof props.depth === 'number' && Number.isFinite(props.depth)
-        ? props.depth
-        : null;
-    const distMi = haversineMiles(KILAUEA_LAT, KILAUEA_LON, evLat, evLon);
-    if (!Number.isFinite(distMi) || distMi > QUAKE_RADIUS_MI + 0.25) continue;
-    if (!best || mag > best.mag) {
-      best = {
-        mag,
-        depthKm,
-        distMi,
-        timeMs: Number(props.time),
-        url:
-          typeof props.url === 'string' && /^https?:\/\//i.test(props.url.trim())
-            ? props.url.trim()
-            : 'https://earthquake.usgs.gov/earthquakes/map/',
-        title: typeof props.title === 'string' ? props.title.trim() : '',
-      };
-    }
-  }
-  return best;
-}
-
-function buildQuakeStripItem(quake) {
-  if (!quake) return null;
-  const distWhole = Math.max(0, Math.round(quake.distMi));
-  const depthStr = formatDepthKmShort(quake.depthKm);
-  const magStr = (Math.round(quake.mag * 10) / 10).toFixed(1);
-  const parts = [`M${magStr}`];
-  if (depthStr) parts.push(depthStr);
-  parts.push(`${distWhole} mi`);
-  return {
-    earthType: 'kilauea_quake',
-    label: 'Kīlauea quake',
-    detailLine: parts.join(' · '),
-    forecastUrl: quake.url,
-    mag: quake.mag,
-    depthKm: quake.depthKm,
-    distMi: quake.distMi,
-  };
-}
-
 function isEruptingAlert(alertLevel, colorCode, textBlob) {
   const alert = String(alertLevel || '').toUpperCase();
   const color = String(colorCode || '').toUpperCase();
@@ -480,7 +381,6 @@ export async function buildKilaueaDashboardPayload() {
     newestSettled,
     updatesSettled,
     messagesSettled,
-    quakeSettled,
     camerasSettled,
   ] = await Promise.allSettled([
     fetchJson(HANS_ELEVATED),
@@ -488,7 +388,6 @@ export async function buildKilaueaDashboardPayload() {
     fetchJson(HANS_NEWEST),
     fetchText(KILAUEA_UPDATES_URL, { accept: 'text/html', timeoutMs: 18_000 }),
     fetchText(HVO_MESSAGES_URL, { accept: 'text/html', timeoutMs: 18_000 }),
-    fetchStrongestKilaueaQuake(),
     Promise.all(CAM_SHORT_LINKS.map(resolveCamera)),
   ]);
 
@@ -600,13 +499,6 @@ export async function buildKilaueaDashboardPayload() {
           embedUrl: `https://www.youtube.com/embed/${c.fallbackVideoId}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1`,
         }));
 
-  let quake = null;
-  if (quakeSettled.status === 'fulfilled') {
-    quake = quakeSettled.value;
-  } else {
-    upstream.quake = String(quakeSettled.reason?.message || quakeSettled.reason);
-  }
-
   /** @type {object[]} */
   const items = [];
 
@@ -668,9 +560,6 @@ export async function buildKilaueaDashboardPayload() {
     });
   }
 
-  const quakeItem = buildQuakeStripItem(quake);
-  if (quakeItem) items.push(quakeItem);
-
   return {
     ok: true,
     items,
@@ -696,14 +585,6 @@ export async function buildKilaueaDashboardPayload() {
       webcamsUrl: SUMMIT_WEBCAMS_URL,
       latestMessage: latestMessage || null,
       synopsis: synopsis || null,
-      quake: quake
-        ? {
-            mag: quake.mag,
-            depthKm: quake.depthKm,
-            distMi: quake.distMi,
-            url: quake.url,
-          }
-        : null,
       upstream: Object.keys(upstream).length ? upstream : undefined,
     },
   };

@@ -3505,6 +3505,61 @@ html.sky-sidebar-hidden .sky-sidebar-toggle {
   background: #0a0e14;
 }
 
+.geoelectric-field__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.05rem;
+  font-size: 0.72rem;
+  color: var(--muted, #9aa3b2);
+  min-width: 0;
+}
+
+.geoelectric-field__nav {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 1.55rem;
+  height: 1.55rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(8, 10, 16, 0.55);
+  color: #f2f4f8;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.geoelectric-field__nav:hover,
+.geoelectric-field__nav:focus-visible {
+  background: rgba(18, 22, 32, 0.85);
+  border-color: rgba(255, 255, 255, 0.35);
+  outline: none;
+}
+
+.geoelectric-field__nav[hidden] {
+  display: none;
+}
+
+.geoelectric-field__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(232, 236, 244, 0.92);
+}
+
+.geoelectric-field__counter {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
 .geoelectric-field__caption {
   margin: 0;
   font-size: 0.62rem;
@@ -6875,13 +6930,17 @@ html.dashbird-view-mobile .page-view--mobile:not([hidden]) {
   padding: 0.65rem clamp(0.75rem, 2.5vw, 1.25rem) 1.5rem;
 }
 
-.mobile-shell__pane .keep-notes {
+/* Mount root is the pane itself (`class="mobile-shell__pane keep-notes"`), not a child. */
+.mobile-shell__pane.keep-notes {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  height: 100%;
+  /* Scroll lives in .keep-notes__scroll; pane overflow + contain on the
+     unbounded inner scroller was trapping touch and blocking list scroll. */
+  overflow: hidden;
 }
 
+.mobile-shell__pane.keep-notes > .keep-notes__shell,
 .mobile-shell__pane .keep-notes__shell {
   flex: 1 1 auto;
   min-height: 0;
@@ -6889,9 +6948,11 @@ html.dashbird-view-mobile .page-view--mobile:not([hidden]) {
   height: auto;
 }
 
+.mobile-shell__pane.keep-notes .keep-notes__scroll,
 .mobile-shell__pane .keep-notes__scroll {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -8575,15 +8636,110 @@ a.mobile-events__title:hover {
   background: rgba(255, 100, 100, 0.12);
 }
 
+/* Mobile map pin card: solid panel, stacked image + scan hierarchy. */
 .events-finder__map-popup .mobile-events__card {
-  border: none;
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: #1a2230;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   cursor: default;
+  overflow: hidden;
 }
 
-.events-finder__map-popup .mobile-events__card .mobile-events__actions {
-  padding: 0 0.65rem 0.65rem;
+.events-finder__map-popup .mobile-events__row {
+  flex-direction: column;
+  min-height: 0;
+}
+
+.events-finder__map-popup .mobile-events__icon {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 7.25rem;
+  align-self: stretch;
+}
+
+.events-finder__map-popup .mobile-events__icon--empty {
+  border-right: none;
+  border-bottom: 1px solid var(--glass-border);
+  min-height: 4.5rem;
+  height: 4.5rem;
+}
+
+.events-finder__map-popup .mobile-events__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.55rem 0.7rem 0.65rem;
+}
+
+.events-finder__map-popup .mobile-events__head {
+  gap: 0.3rem;
+}
+
+.events-finder__map-popup .mobile-events__title,
+.events-finder__map-popup a.mobile-events__title {
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.28;
+  color: var(--text, #f2f6ff);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.events-finder__map-popup a.mobile-events__title:hover {
+  color: rgba(160, 200, 255, 0.95);
+}
+
+.events-finder__map-popup .mobile-events__when {
+  margin: 0.08rem 0 0;
+  color: #f5d76e;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.events-finder__map-popup .mobile-events__place {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: rgba(200, 210, 230, 0.9);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.events-finder__map-popup .mobile-events__place[hidden] {
+  display: none;
+}
+
+.events-finder__map-popup .mobile-events__meta {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted, #9aa3b2);
+  line-height: 1.3;
+}
+
+.events-finder__map-popup .mobile-events__meta[hidden] {
+  display: none;
+}
+
+.events-finder__map-popup .mobile-events__body .events-finder__card-price {
+  margin-top: 0.05rem;
+  font-size: 0.76rem;
+}
+
+.events-finder__map-popup .mobile-events__actions {
+  margin-top: 0.3rem;
+  padding: 0;
+  gap: 0.3rem;
+}
+
+.events-finder__map-popup .mobile-events__action {
+  min-height: 1.85rem;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.74rem;
 }
 
 .mobile-events__title--editable {
@@ -14117,8 +14273,9 @@ button.network-crm__person-name--link:hover {
 
 .keep-notes__card-cat {
   display: inline-block;
-  align-self: flex-start;
-  margin-top: 0.15rem;
+  align-self: flex-end;
+  margin-top: auto;
+  margin-right: 1.35rem; /* clear hover delete control at bottom-right */
   padding: 0.06rem 0.28rem;
   border-radius: 999px;
   border: 1px solid rgba(120, 150, 200, 0.22);
@@ -17502,9 +17659,8 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 }
 
 .mobile-tasks__move-cancel {
-  display: block;
-  width: 100%;
-  margin-top: 0.55rem;
+  flex: 1 1 0;
+  margin-top: 0;
   font: inherit;
   font-size: 0.88em;
   font-weight: 600;
@@ -18668,6 +18824,41 @@ body.dashbird-check-busy * {
   width: 280px;
 }
 
+/* Daily scratch sticky — teal/blue-green twin of the brown DEV NOTES chrome */
+.dev-sticky-note--scratch {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 0 1px #1a4a44;
+}
+
+.dev-sticky-note--scratch .dev-sticky-note__header {
+  background: #0f2a2a;
+  border-bottom-color: #1a4a44;
+}
+
+.dev-sticky-note--scratch .dev-sticky-note__title {
+  color: #5ec4b0;
+}
+
+.dev-sticky-note--scratch .dev-sticky-note__collapse {
+  color: #4a8a80;
+}
+
+.dev-sticky-note--scratch .dev-sticky-note__collapse:hover {
+  color: #5ec4b0;
+}
+
+.dev-sticky-note--scratch .dev-sticky-note__body,
+.dev-sticky-note--scratch .dev-sticky-note__textarea {
+  background: #0d2220;
+}
+
+.dev-sticky-note--scratch .dev-sticky-note__textarea {
+  color: #b8dcd4;
+}
+
+.dev-sticky-note--scratch .dev-sticky-note__textarea::placeholder {
+  color: #3d6b64;
+}
+
 .dev-sticky-note__hint {
   margin: 0;
   padding: 6px 8px 0;
@@ -19498,21 +19689,51 @@ body.dev-request-mobile-open {
   min-width: 0;
 }
 
-.tasks-random__waiting {
+.tasks-random__bottom {
   display: flex;
-  justify-content: flex-start;
+  flex-direction: column;
+  gap: 0.45rem;
   margin-top: 0.65rem;
 }
 
-.tasks-random__waiting-control {
-  gap: 0.4rem;
-  padding: 0.4rem 0.65rem;
-  font-size: 0.78em;
-  font-weight: 600;
+.tasks-random__schedule-slot,
+.tasks-random__waiting {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.tasks-random__bottom-schedule-wrap {
+  width: 100%;
+  justify-content: space-between;
+  gap: 0.55rem;
+  flex: 1 1 auto;
+  align-self: stretch;
+}
+
+.tasks-random__bottom-schedule {
+  flex: 1 1 auto;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.9em;
+  font-weight: 650;
   line-height: 1.3;
-  border-radius: 0.45rem;
+  border-radius: 0.5rem;
+  white-space: normal;
+}
+
+.tasks-random__waiting-control {
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.9em;
+  font-weight: 650;
+  line-height: 1.3;
+  border-radius: 0.5rem;
   border: 1px solid rgba(120, 150, 200, 0.28);
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.22);
   color: var(--text, #e8ecf4);
 }
 
@@ -19525,9 +19746,14 @@ body.dev-request-mobile-open {
 .tasks-random__actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: stretch;
   gap: 0.4rem;
-  margin-top: 0.55rem;
+  margin-top: 0.1rem;
+}
+
+.tasks-random__actions .tasks-random__secondary {
+  flex: 1 1 5.5rem;
+  text-align: center;
 }
 
 .tasks-random__status {
@@ -19747,17 +19973,20 @@ body.dev-request-mobile-open {
 }
 .mobile-tasks__move-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: stretch;
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
 .mobile-tasks__move-save {
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
+  flex: 1 1 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.55rem;
   border: 1px solid color-mix(in srgb, var(--accent, #7bffce) 55%, transparent);
   background: color-mix(in srgb, var(--accent, #7bffce) 20%, transparent);
   color: var(--text, #e8e6e3);
   font: inherit;
+  font-size: 0.88em;
+  font-weight: 600;
   cursor: pointer;
 }
 

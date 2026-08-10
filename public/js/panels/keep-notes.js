@@ -920,7 +920,7 @@ export function mountKeepNotes(root) {
     grip.setAttribute('aria-hidden', 'true');
     dragHandle.append(grip);
 
-    card.append(checkEl, dragHandle, pinBtn, moreBtn, delBtn, titleEl, bodyEl, catEl, mediaEl);
+    card.append(checkEl, dragHandle, pinBtn, moreBtn, delBtn, titleEl, bodyEl, mediaEl, catEl);
 
     dragHandle.addEventListener('dragstart', (e) => {
       if (selectMode) {

@@ -269,7 +269,7 @@ async function mainMobile() {
 
   const [{ mountViewModeToggle }, { mountMobileShell }] = await Promise.all([
     import('./panels/view-mode-toggle.js'),
-    import('./panels/mobile-shell.js?v=mobile-panels-20260809-did-heal-1'),
+    import('./panels/mobile-shell.js?v=mobile-panels-20260810-gmail-open-1'),
   ]);
 
   mountViewModeToggle(document.getElementById('mount-view-mode'));
@@ -404,6 +404,12 @@ async function mainDesktop() {
       mountDevStickyNote();
     })
     .catch((e) => console.error('Dev sticky mount failed:', e));
+
+  void import('./panels/daily-scratch-sticky.js')
+    .then(({ mountDailyScratchSticky }) => {
+      mountDailyScratchSticky();
+    })
+    .catch((e) => console.error('Daily scratch sticky mount failed:', e));
 
   void configPromise.then((fresh) => {
     if (!fresh || typeof fresh !== 'object') return;

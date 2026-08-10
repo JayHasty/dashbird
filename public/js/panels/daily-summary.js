@@ -6,7 +6,7 @@ import { readPanelCache, writePanelCache } from '../lib/panel-cache.js';
 import {
   gmailWebMessageUrl,
   wireGmailOpenAnchor,
-} from '../lib/gmail-open-url.js';
+} from '../lib/gmail-open-url.js?v=gmail-open-search-1';
 import {
   focusTasksPanel,
   notifyTaskCreated,

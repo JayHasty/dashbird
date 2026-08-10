@@ -157,7 +157,7 @@ export const DASHBOARD_MONITORING_SOURCES = [
     group: 'Earth',
     label: 'Kīlauea volcano (Hawaiʻi) + summit livestream',
     source:
-      'USGS HANS alerts + HVO volcano messages · nearby M>3 quakes · V1/V2/V3 YouTube cams via url.usgs.gov',
+      'USGS HANS alerts + HVO volcano messages · V1/V2/V3 YouTube cams via url.usgs.gov',
   },
   {
     id: 'earth_glm',

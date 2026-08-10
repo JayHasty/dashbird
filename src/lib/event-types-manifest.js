@@ -162,7 +162,7 @@ export const EARTH_EVENT_MANIFEST = [
     label: 'Kīlauea (Hawaiʻi)',
     category: 'Earth',
     dataSource:
-      'USGS HANS + HVO messages · active when fountaining or dated next-episode forecast; nearby M>3 quake same format as local row',
+      'USGS HANS + HVO messages · active when fountaining or dated next-episode forecast',
   },
   {
     id: 'goes_glm_lightning',

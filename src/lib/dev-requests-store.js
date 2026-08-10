@@ -2,7 +2,8 @@
  * Dashbird dev / feature change requests — local SQLite index + one folder per request.
  * Screenshots live beside request.json under data/dev-requests/<folder>/ for easy dev browsing.
  */
-import { mkdir, readFile, writeFile, readdir, chown } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
+import { fixHostOwnership } from './fix-host-ownership.js';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -92,26 +93,6 @@ function slugPart(s) {
  */
 function newId() {
   return randomBytes(4).toString('hex');
-}
-
-/**
- * When the dashboard container runs as root but data/ is bind-mounted from the host,
- * chown new files to DASHBOARD_HOST_UID so Jay can browse/edit without sudo.
- * @param {string[]} paths
- * @param {NodeJS.ProcessEnv} [env]
- */
-async function fixHostOwnership(paths, env = process.env) {
-  const uid = Number(env.DASHBOARD_HOST_UID);
-  if (!Number.isFinite(uid) || uid <= 0 || typeof process.getuid !== 'function' || process.getuid() !== 0) {
-    return;
-  }
-  for (const p of paths) {
-    try {
-      await chown(p, uid, uid);
-    } catch {
-      // best effort
-    }
-  }
 }
 
 /**

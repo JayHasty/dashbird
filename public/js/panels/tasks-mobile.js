@@ -371,17 +371,14 @@ export function mountTasksMobile(root, config = {}) {
 
   const moveActions = document.createElement('div');
   moveActions.className = 'mobile-tasks__move-actions';
-  moveActions.style.cssText = 'display:flex;gap:0.5rem;margin-top:0.55rem;';
   const moveSave = document.createElement('button');
   moveSave.type = 'button';
   moveSave.className = 'mobile-tasks__add-btn mobile-tasks__move-save';
   moveSave.textContent = 'Save';
-  moveSave.style.flex = '1';
   const moveCancel = document.createElement('button');
   moveCancel.type = 'button';
   moveCancel.className = 'mobile-tasks__move-cancel';
   moveCancel.textContent = 'Cancel';
-  moveCancel.style.cssText = 'flex:1;margin-top:0;';
   moveActions.append(moveSave, moveCancel);
 
   moveOverlay.append(

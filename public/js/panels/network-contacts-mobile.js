@@ -1241,9 +1241,14 @@ export function mountNetworkContactsMobile(root) {
     tasksLabel.textContent = 'Tasks';
     const addInput = document.createElement('input');
     addInput.type = 'text';
-    addInput.className = 'mobile-network__input';
+    addInput.className = 'mobile-network__input mobile-network__tasks-input';
     addInput.placeholder = 'Add a task…';
     addInput.autocomplete = 'off';
+    addInput.maxLength = 500;
+    addInput.setAttribute('aria-label', 'Add a task');
+    // Soft keyboards often use Go/Done which implicit-submits the form; keep
+    // the action labeled so Enter commits the draft before Save runs.
+    addInput.setAttribute('enterkeyhint', 'done');
     const taskList = document.createElement('ul');
     taskList.className = 'mobile-network__tasks-list';
     const taskStatus = document.createElement('p');
@@ -1257,7 +1262,13 @@ export function mountNetworkContactsMobile(root) {
      * @param {HTMLInputElement | null} [cb]
      */
     async function persistTasks(cb = null) {
-      const tasks = draftTasks.map((t) => ({ id: t.id, text: t.text, done: t.done }));
+      const tasks = draftTasks
+        .map((t) => ({
+          id: t.id,
+          text: String(t.text || '').trim(),
+          done: Boolean(t.done),
+        }))
+        .filter((t) => t.text);
       if (cb) cb.disabled = true;
       taskStatus.hidden = false;
       taskStatus.textContent = 'Saving…';
@@ -1310,22 +1321,48 @@ export function mountNetworkContactsMobile(root) {
         taskList.append(li);
       }
     }
-    addInput.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
+
+    /** Commit typed text into draftTasks (Enter, blur, or right before Save). */
+    function tryAddTask() {
       const text = String(addInput.value || '').trim();
-      if (!text) return;
-      draftTasks.push({
-        id: `task_${Math.random().toString(36).slice(2, 10)}`,
-        text,
-        done: false,
-      });
+      if (!text) return false;
+      draftTasks = [
+        ...draftTasks,
+        {
+          id: `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+          text,
+          done: false,
+        },
+      ];
       addInput.value = '';
       dirty = true;
       renderTasks();
+      return true;
+    }
+
+    addInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      e.stopPropagation();
+      tryAddTask();
     });
-    /** @type {any} */ (tasksWrap).getTasks = () =>
-      draftTasks.map((t) => ({ id: t.id, text: t.text, done: t.done }));
+    // Mobile soft keyboards often dismiss via Done/Go without a reliable Enter
+    // keydown; commit the draft on blur so Save / leave prompts see it.
+    addInput.addEventListener('blur', () => {
+      tryAddTask();
+    });
+    /** @type {any} */ (tasksWrap).getTasks = () => {
+      // Flush pending input before form Save — Android IME "Go" often submits
+      // the form without firing Enter, which previously dropped the new task.
+      tryAddTask();
+      return draftTasks
+        .map((t) => ({
+          id: t.id,
+          text: String(t.text || '').trim(),
+          done: Boolean(t.done),
+        }))
+        .filter((t) => t.text);
+    };
     tasksWrap.append(tasksLabel, addInput, taskList, taskStatus);
     renderTasks();
 

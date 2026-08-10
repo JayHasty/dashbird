@@ -2491,7 +2491,7 @@ export function mountEventsFinderMobile(root) {
   function buildMapPopup(ev) {
     const wrap = document.createElement('div');
     wrap.className = 'events-finder__map-popup';
-    wrap.append(buildCard(ev));
+    wrap.append(buildCard(ev, { mapPopup: true }));
     return wrap;
   }
 
@@ -2890,9 +2890,14 @@ export function mountEventsFinderMobile(root) {
     return card;
   }
 
-  function buildCard(ev) {
+  /**
+   * @param {object} ev
+   * @param {{ mapPopup?: boolean }} [opts]
+   */
+  function buildCard(ev, opts = {}) {
     const card = document.createElement('article');
     card.className = 'mobile-events__card';
+    if (opts.mapPopup) card.classList.add('mobile-events__card--map-popup');
 
     const eventUrl = String(ev.url || '').trim();
     const eventId = String(ev.id || '').trim();
@@ -2955,15 +2960,44 @@ export function mountEventsFinderMobile(root) {
 
     head.append(title, favBtn);
 
-    const meta = document.createElement('p');
-    meta.className = 'mobile-events__meta';
-    const bits = [formatWhen(ev.start)];
     const place = String(ev.venue || ev.location || '').trim();
-    if (place) bits.push(place);
-    if (ev.online || ev.isOnline) bits.push('Online');
-    else if (ev.city) bits.push(String(ev.city));
-    if (Number.isFinite(ev.distanceMiles)) bits.push(`${Math.round(ev.distanceMiles)} mi`);
-    meta.textContent = bits.filter(Boolean).join(' · ');
+
+    /** @type {HTMLElement[]} */
+    const bodyBits = [head];
+
+    if (opts.mapPopup) {
+      // Map pin: title → when → where → city/distance (scan hierarchy).
+      const whenEl = document.createElement('p');
+      whenEl.className = 'mobile-events__when';
+      whenEl.textContent = formatWhen(ev.start);
+      bodyBits.push(whenEl);
+
+      const placeEl = document.createElement('p');
+      placeEl.className = 'mobile-events__place';
+      if (place) placeEl.textContent = place;
+      else placeEl.hidden = true;
+      bodyBits.push(placeEl);
+
+      const meta = document.createElement('p');
+      meta.className = 'mobile-events__meta';
+      const bits = [];
+      if (ev.online || ev.isOnline) bits.push('Online');
+      else if (ev.city) bits.push(String(ev.city));
+      if (Number.isFinite(ev.distanceMiles)) bits.push(`${Math.round(ev.distanceMiles)} mi`);
+      if (bits.length) meta.textContent = bits.join(' · ');
+      else meta.hidden = true;
+      bodyBits.push(meta);
+    } else {
+      const meta = document.createElement('p');
+      meta.className = 'mobile-events__meta';
+      const bits = [formatWhen(ev.start)];
+      if (place) bits.push(place);
+      if (ev.online || ev.isOnline) bits.push('Online');
+      else if (ev.city) bits.push(String(ev.city));
+      if (Number.isFinite(ev.distanceMiles)) bits.push(`${Math.round(ev.distanceMiles)} mi`);
+      meta.textContent = bits.filter(Boolean).join(' · ');
+      bodyBits.push(meta);
+    }
 
     // Price on its own line, green + bold (consistent across all event cards).
     const priceLabel = String(ev.priceLabel || '').trim();
@@ -2971,6 +3005,7 @@ export function mountEventsFinderMobile(root) {
     priceEl.className = 'events-finder__card-price';
     if (priceLabel) priceEl.textContent = priceLabel;
     else priceEl.hidden = true;
+    bodyBits.push(priceEl);
 
     const actions = document.createElement('div');
     actions.className = 'mobile-events__actions';
@@ -3048,10 +3083,11 @@ export function mountEventsFinderMobile(root) {
       siteBtn.addEventListener('click', (e) => e.stopPropagation());
       actions.append(siteBtn);
     }
+    bodyBits.push(actions);
 
     /** @type {HTMLElement | null} */
     let notableRow = null;
-    if (!showSkipped && eventId) {
+    if (!opts.mapPopup && !showSkipped && eventId) {
       const isNotable = ev.notable === true;
       if (isNotable) card.classList.add('events-finder__card--notable');
       notableRow = document.createElement('label');
@@ -3083,10 +3119,12 @@ export function mountEventsFinderMobile(root) {
       notableText.textContent = 'Notable event';
       notableRow.append(notableCb, notableText);
       notableRow.addEventListener('click', (e) => e.stopPropagation());
+      bodyBits.push(notableRow);
+    } else if (opts.mapPopup && ev.notable === true) {
+      card.classList.add('events-finder__card--notable');
     }
 
-    body.append(head, meta, priceEl, actions);
-    if (notableRow) body.append(notableRow);
+    body.append(...bodyBits);
     row.append(icon, body);
     card.append(row);
 

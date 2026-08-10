@@ -6,7 +6,7 @@ import {
   gmailMailtoFallbackUrl,
   gmailWebMessageUrl,
   wireGmailOpenAnchor,
-} from '../lib/gmail-open-url.js';
+} from '../lib/gmail-open-url.js?v=gmail-open-search-1';
 import {
   notifyTaskCreated,
   readTasksProjectId,
