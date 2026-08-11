@@ -1,3 +1,5 @@
+import { fillLinkifiedText } from '../lib/linkify-text.js';
+
 /**
  * Google Keep-style scratch notes — pinned cards, scrollable grid, image + voice attachments.
  * @param {HTMLElement | null} root
@@ -692,7 +694,7 @@ export function mountKeepNotes(root) {
     bodyEl.replaceChildren();
     bodyEl.classList.toggle('keep-notes__card-body--checklist', bodyHasChecklist(body));
     if (!bodyHasChecklist(body)) {
-      bodyEl.textContent = body.trim();
+      fillLinkifiedText(bodyEl, body.trim());
       return;
     }
     const lines = body.split('\n');
@@ -718,14 +720,14 @@ export function mountKeepNotes(root) {
 
         const text = document.createElement('span');
         text.className = 'keep-notes__check-item-text';
-        text.textContent = parsed.text || ' ';
+        fillLinkifiedText(text, parsed.text || ' ');
 
         row.append(cb, text);
         bodyEl.append(row);
       } else if (line.length) {
         const plain = document.createElement('div');
         plain.className = 'keep-notes__check-plain';
-        plain.textContent = line;
+        fillLinkifiedText(plain, line);
         bodyEl.append(plain);
       } else if (i < lines.length - 1) {
         const gap = document.createElement('div');
@@ -799,7 +801,7 @@ export function mountKeepNotes(root) {
     const body = String(note.body || '').trim();
     const category = String(note.category || '').trim();
     if (titleEl) {
-      titleEl.textContent = title;
+      fillLinkifiedText(titleEl, title);
       titleEl.hidden = !title;
     }
     if (bodyEl) {

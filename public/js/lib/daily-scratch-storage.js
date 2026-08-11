@@ -1,19 +1,10 @@
-/** localStorage helpers for floating daily scratch stickies. */
+/** localStorage helpers for floating daily scratch stickies (layout cache + offline draft). */
 
 export const DAILY_SCRATCH_STORAGE_PREFIX = 'dashbird-daily-scratch-v1:';
 
 /**
- * @typedef {{ content: string, day: string, x: number, y: number, collapsed: boolean }} DailyScratchState
+ * @typedef {{ content: string, x: number, y: number, collapsed: boolean, updatedAt?: string }} DailyScratchState
  */
-
-/** @returns {string} Local YYYY-MM-DD */
-export function todayKey() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 /**
  * @param {string} variantId
@@ -30,7 +21,6 @@ export function dailyScratchStorageKey(variantId) {
  * @returns {DailyScratchState}
  */
 export function loadDailyScratch(variantId, defaultPosition, clampPosition) {
-  const day = todayKey();
   try {
     const raw = localStorage.getItem(dailyScratchStorageKey(variantId));
     if (raw) {
@@ -39,18 +29,17 @@ export function loadDailyScratch(variantId, defaultPosition, clampPosition) {
         Number.isFinite(parsed?.x) ? parsed.x : defaultPosition().x,
         Number.isFinite(parsed?.y) ? parsed.y : defaultPosition().y,
       );
-      const sameDay = parsed?.day === day;
       return {
-        content: sameDay && typeof parsed?.content === 'string' ? parsed.content : '',
-        day,
+        content: typeof parsed?.content === 'string' ? parsed.content : '',
         collapsed: Boolean(parsed?.collapsed),
+        updatedAt: typeof parsed?.updatedAt === 'string' ? parsed.updatedAt : '',
         ...pos,
       };
     }
   } catch {
     // ignore corrupt storage
   }
-  return { content: '', day, collapsed: true, ...defaultPosition() };
+  return { content: '', collapsed: true, updatedAt: '', ...defaultPosition() };
 }
 
 /**
@@ -59,10 +48,7 @@ export function loadDailyScratch(variantId, defaultPosition, clampPosition) {
  */
 export function saveDailyScratch(variantId, state) {
   try {
-    localStorage.setItem(
-      dailyScratchStorageKey(variantId),
-      JSON.stringify({ ...state, day: todayKey() }),
-    );
+    localStorage.setItem(dailyScratchStorageKey(variantId), JSON.stringify(state));
   } catch {
     // ignore quota errors
   }

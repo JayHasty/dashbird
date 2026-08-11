@@ -155,6 +155,55 @@ export function parseOpportunityType(title, text, compensation = null) {
 }
 
 /**
+ * Metro buckets for filter chips. Keep in sync with
+ * `public/js/lib/job-location-region.js`.
+ * @type {ReadonlyArray<{ region: string, re: RegExp }>}
+ */
+const LOCATION_REGIONS = Object.freeze([
+  {
+    region: 'Bay Area',
+    re: /\b(san francisco|oakland|emeryville|mountain view|sunnyvale|san jose|san bruno|palo alto|bay area|berkeley|menlo park|redwood city|cupertino|santa clara|san mateo|foster city|milpitas|fremont|daly city|south san francisco)\b/i,
+  },
+  {
+    region: 'NYC Area',
+    re: /\b(new york city|new york|nyc|brooklyn|manhattan|queens|the bronx|staten island)\b/i,
+  },
+  {
+    region: 'DC Area',
+    re: /\b(reston|arlington|alexandria|mclean|tysons|washington,?\s*d\.?c\.?|district of columbia)\b/i,
+  },
+  {
+    region: 'Remote',
+    re: /\b(remote|home[-\s]?based)\b/i,
+  },
+]);
+
+const PLACE_JUNK =
+  /^(united states of america|united states|usa|u\.s\.a\.|u\.s\.|us|united kingdom|great britain|england|scotland|wales|uk|canada|germany|france|india|japan|australia|ireland|netherlands|switzerland|california|ca|new york|ny|washington|wa|virginia|va|massachusetts|ma|texas|tx|colorado|co|illinois|il|oregon|or)$/i;
+
+/**
+ * Collapse a posting location to a region / city for filters.
+ * Specific office strings stay on the job card.
+ * @param {string} value
+ * @returns {string}
+ */
+export function locationRegion(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  for (const { region, re } of LOCATION_REGIONS) {
+    if (re.test(s)) return region;
+  }
+  const bits = s
+    .replace(/\s*[-–—]\s*(remote|hybrid|on[-\s]?site).*$/i, '')
+    .split(/[,|/]/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => !PLACE_JUNK.test(p));
+  const city = (bits[0] || s.split(/[,|/]/)[0] || s).replace(/\s+/g, ' ').trim();
+  return city;
+}
+
+/**
  * Split a location field into distinct office / area labels.
  * @param {string} location
  * @returns {string[]}
@@ -170,16 +219,11 @@ export function parseLocations(location) {
   for (const p of parts) {
     if (!out.some((x) => x.toLowerCase() === p.toLowerCase())) out.push(p);
   }
-  const hay = out.join(' · ').toLowerCase();
   const areas = [];
-  if (/\b(san francisco|oakland|emeryville|mountain view|sunnyvale|san jose|san bruno|palo alto|bay area)\b/.test(hay)) {
-    areas.push('Bay Area');
+  for (const p of out) {
+    const r = locationRegion(p);
+    if (LOCATION_REGIONS.some((x) => x.region === r) && !areas.includes(r)) areas.push(r);
   }
-  if (/\b(new york|nyc|brooklyn|manhattan)\b/.test(hay)) areas.push('NYC Area');
-  if (/\b(reston|arlington|washington,??\s*dc|district of columbia)\b/.test(hay)) {
-    areas.push('DC Area');
-  }
-  if (/\bremote\b/.test(hay) || /\bhome[-\s]?based\b/.test(hay)) areas.push('Remote');
   for (const a of areas) {
     if (!out.some((x) => x.toLowerCase() === a.toLowerCase())) out.push(a);
   }

@@ -3,6 +3,7 @@ import {
   openProjectLocationsTable,
   openTaskTagsEditor,
   openWaitingOnList,
+  openRecentlyArchivedTasks,
   createWaitingOnControl,
 } from '../lib/task-random-ui.js';
 import { fetchTaskRandomMeta } from '../lib/task-location-meta.js';
@@ -23,6 +24,7 @@ import {
   mobileNavBack,
   isMobileNavApplying,
 } from '../lib/mobile-history.js';
+import { fillLinkifiedText } from '../lib/linkify-text.js';
 import { TASKS_LABELS } from '../lib/network-labels.js';
 
 const PROJECT_LS_KEY = 'dashbird-tasks-project-id';
@@ -312,7 +314,13 @@ export function mountTasksMobile(root, config = {}) {
   locationsBtn.textContent = 'Locations';
   if (!vikunjaConfigured) locationsBtn.hidden = true;
 
-  listPane.append(listHead, projectsList, locationsBtn, addProjectForm);
+  const archivedBtn = document.createElement('button');
+  archivedBtn.type = 'button';
+  archivedBtn.className = 'mobile-tasks__archived-btn';
+  archivedBtn.textContent = TASKS_LABELS.recentlyArchived;
+  if (!vikunjaConfigured) archivedBtn.hidden = true;
+
+  listPane.append(listHead, projectsList, locationsBtn, addProjectForm, archivedBtn);
 
   const detailPane = document.createElement('div');
   detailPane.className = 'mobile-tasks__detail-pane';
@@ -1182,6 +1190,13 @@ export function mountTasksMobile(root, config = {}) {
 
     editMenu.append(renameBtn, deleteBtn);
 
+    const detailArchivedBtn = document.createElement('button');
+    detailArchivedBtn.type = 'button';
+    detailArchivedBtn.className = 'mobile-tasks__archived-btn';
+    detailArchivedBtn.textContent = TASKS_LABELS.recentlyArchived;
+    if (!vikunjaConfigured) detailArchivedBtn.hidden = true;
+    detailArchivedBtn.addEventListener('click', () => openArchivedModal());
+
     const closeEditMenu = () => {
       editMenu.hidden = true;
       editBtn.setAttribute('aria-expanded', 'false');
@@ -1207,7 +1222,7 @@ export function mountTasksMobile(root, config = {}) {
       void deleteCurrentProject();
     });
 
-    detailFoot.append(editBtn, editMenu);
+    detailFoot.append(editBtn, editMenu, detailArchivedBtn);
 
     detailPane.append(detailHead, head, addForm, list, empty, detailFoot);
 
@@ -1256,7 +1271,7 @@ export function mountTasksMobile(root, config = {}) {
 
     const text = document.createElement('span');
     text.className = 'mobile-tasks__task-text';
-    text.textContent = item.text;
+    fillLinkifiedText(text, item.text);
     text.title = 'Long-press to edit task';
 
     label.append(cb, text);
@@ -1725,6 +1740,30 @@ export function mountTasksMobile(root, config = {}) {
 
   projectsList.addEventListener('pointerup', finishProjectPointerDrag);
   projectsList.addEventListener('pointercancel', finishProjectPointerDrag);
+
+  function openArchivedModal() {
+    void openRecentlyArchivedTasks({
+      root,
+      onUnarchive: (item) => {
+        if (!item?.id || !item.text) return;
+        const pid =
+          item.projectId != null && Number.isFinite(Number(item.projectId))
+            ? Number(item.projectId)
+            : projectId;
+        const row = { id: String(item.id), text: String(item.text), done: false };
+        if (pid != null && pid === projectId && view === 'detail') {
+          if (!items.some((it) => it.id === row.id)) {
+            items = [row, ...items];
+            renderDetailShell();
+          }
+          return;
+        }
+        if (pid != null) void openProject(pid);
+      },
+    });
+  }
+
+  archivedBtn.addEventListener('click', () => openArchivedModal());
 
   waitingOnBtn.addEventListener('click', () => {
     void openWaitingOnList({

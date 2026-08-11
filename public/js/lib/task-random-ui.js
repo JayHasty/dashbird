@@ -2,6 +2,7 @@
  * Do Random Task picker + project locations table + waiting-on list.
  */
 import { TASK_LOCATION_OPTIONS, patchTaskRandomMeta } from './task-location-meta.js';
+import { fillLinkifiedText } from './linkify-text.js';
 import {
   clearTaskSchedule,
   createScheduleControl,
@@ -252,7 +253,7 @@ export function openTaskTagsEditor(opts) {
     if (taskText) {
       const name = document.createElement('p');
       name.className = 'tasks-random__tags-task-name';
-      name.textContent = taskText;
+      fillLinkifiedText(name, taskText);
       body.append(name);
     }
     const assignRow = document.createElement('div');
@@ -444,20 +445,20 @@ function beginRandomTaskTitleEdit(titleEl, initial, onCommit) {
     closed = true;
     const next = input.value.trim();
     if (!save || !next) {
-      titleEl.textContent = initial;
+      fillLinkifiedText(titleEl, initial);
       return;
     }
     if (next === initial) {
-      titleEl.textContent = initial;
+      fillLinkifiedText(titleEl, initial);
       return;
     }
-    titleEl.textContent = next;
+    fillLinkifiedText(titleEl, next);
     titleEl.classList.add('tasks-random__card-title--saving');
     try {
       await onCommit(next);
       titleEl.classList.remove('tasks-random__card-title--saving');
     } catch {
-      titleEl.textContent = initial;
+      fillLinkifiedText(titleEl, initial);
       titleEl.classList.remove('tasks-random__card-title--saving');
     }
   }
@@ -534,7 +535,7 @@ async function renderTaskCardModal(opts) {
 
   const title = document.createElement('h3');
   title.className = 'tasks-random__card-title';
-  title.textContent = data.task.text;
+  fillLinkifiedText(title, data.task.text);
   title.title = 'Double-click to edit';
 
   const proj = document.createElement('p');
@@ -1060,7 +1061,7 @@ function renderWaitingOnItem(opts) {
 
   const title = document.createElement('p');
   title.className = 'tasks-waiting__item-title';
-  title.textContent = item.text;
+  fillLinkifiedText(title, item.text);
 
   const clearBtn = document.createElement('button');
   clearBtn.type = 'button';
@@ -1174,6 +1175,130 @@ export async function openWaitingOnList(opts) {
       status.hidden = false;
       status.classList.add('tasks-random__status--err');
       status.textContent = String(e?.message || e || 'Could not load waiting list.');
+    }
+  }
+
+  await load();
+}
+
+/**
+ * @param {string | null | undefined} iso
+ */
+function formatArchivedWhen(iso) {
+  const ms = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(ms)) return '';
+  const delta = Date.now() - ms;
+  if (delta < 45_000) return 'just now';
+  if (delta < 3_600_000) return `${Math.max(1, Math.round(delta / 60_000))}m ago`;
+  if (delta < 86_400_000) return `${Math.max(1, Math.round(delta / 3_600_000))}h ago`;
+  const days = Math.max(1, Math.round(delta / 86_400_000));
+  return days === 1 ? 'yesterday' : `${days}d ago`;
+}
+
+/**
+ * Last 20 completed tasks, with Unarchive to restore them to their project.
+ * @param {{
+ *   root: HTMLElement,
+ *   onUnarchive?: (item: { id: string, text: string, projectId: number | null }) => void,
+ * }} opts
+ */
+export async function openRecentlyArchivedTasks(opts) {
+  const { root, onUnarchive } = opts;
+  const shell = makeModalShell(root, 'Recently archived tasks');
+  shell.modal.classList.add('tasks-random__modal--waiting');
+
+  const hint = document.createElement('p');
+  hint.className = 'tasks-random__hint muted';
+  hint.textContent = 'Last 20 completed tasks. Unarchive restores a task to its project.';
+
+  const list = document.createElement('div');
+  list.className = 'tasks-archived__list';
+
+  const status = document.createElement('p');
+  status.className = 'tasks-random__status';
+  status.hidden = true;
+
+  shell.body.append(hint, list, status);
+
+  /**
+   * @param {{ id: string, text: string, projectId: number | null, projectTitle?: string, archivedAt?: string | null }} item
+   */
+  function renderItem(item) {
+    const row = document.createElement('div');
+    row.className = 'tasks-archived__item';
+
+    const main = document.createElement('div');
+    main.className = 'tasks-archived__main';
+    const title = document.createElement('div');
+    title.className = 'tasks-archived__title';
+    fillLinkifiedText(title, item.text);
+    const meta = document.createElement('div');
+    meta.className = 'tasks-archived__meta muted';
+    const when = formatArchivedWhen(item.archivedAt);
+    meta.textContent = [item.projectTitle, when].filter(Boolean).join(' · ');
+    main.append(title, meta);
+
+    const unarchive = document.createElement('button');
+    unarchive.type = 'button';
+    unarchive.className = 'tasks-archived__unarchive';
+    unarchive.textContent = 'Unarchive';
+    unarchive.addEventListener('click', async () => {
+      unarchive.disabled = true;
+      try {
+        const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(item.id)}/undo`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            item.projectId != null ? { projectId: item.projectId } : {},
+          ),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.ok === false) throw new Error(j.detail || j.error || 'unarchive_failed');
+        onUnarchive?.(j.item || item);
+        row.remove();
+        if (!list.querySelector('.tasks-archived__item')) {
+          const empty = document.createElement('p');
+          empty.className = 'tasks-random__hint muted';
+          empty.textContent = 'No recently archived tasks.';
+          list.replaceChildren(empty);
+        }
+      } catch {
+        unarchive.disabled = false;
+        status.hidden = false;
+        status.classList.add('tasks-random__status--err');
+        status.textContent = 'Could not unarchive task.';
+      }
+    });
+
+    row.append(main, unarchive);
+    return row;
+  }
+
+  async function load() {
+    list.replaceChildren();
+    status.hidden = false;
+    status.classList.remove('tasks-random__status--err');
+    status.textContent = 'Loading…';
+    try {
+      const r = await fetch('/api/vikunja/todos/archived', { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) throw new Error(j.detail || j.error || 'load_failed');
+      status.hidden = true;
+      const items = Array.isArray(j.items) ? j.items : [];
+      if (!items.length) {
+        const empty = document.createElement('p');
+        empty.className = 'tasks-random__hint muted';
+        empty.textContent = 'No recently archived tasks.';
+        list.append(empty);
+        return;
+      }
+      for (const item of items) {
+        list.append(renderItem(item));
+      }
+    } catch (e) {
+      status.hidden = false;
+      status.classList.add('tasks-random__status--err');
+      status.textContent = String(e?.message || e || 'Could not load archived tasks.');
     }
   }
 

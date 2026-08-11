@@ -3,6 +3,7 @@ import {
   openProjectLocationsTable,
   openTaskTagsEditor,
   openWaitingOnList,
+  openRecentlyArchivedTasks,
   createWaitingOnControl,
 } from '../lib/task-random-ui.js';
 import { fetchTaskRandomMeta } from '../lib/task-location-meta.js';
@@ -14,6 +15,7 @@ import {
 } from '../lib/task-schedule.js';
 import { onTaskCreated } from '../lib/task-bridge.js';
 import { TASKS_LABELS } from '../lib/network-labels.js';
+import { fillLinkifiedText } from '../lib/linkify-text.js';
 
 /**
  * Main Tasks panel — browse Vikunja projects, add/complete tasks on Dashbird.
@@ -157,7 +159,14 @@ export function mountTasks(root, config = {}) {
   deleteProjectMenuBtn.setAttribute('role', 'menuitem');
 
   projectEditMenu.append(renameProjectMenuBtn, deleteProjectMenuBtn);
-  detailFoot.append(editProjectBtn, projectEditMenu);
+
+  const archivedBtn = document.createElement('button');
+  archivedBtn.type = 'button';
+  archivedBtn.className = 'tasks-panel__archived-btn';
+  archivedBtn.textContent = TASKS_LABELS.recentlyArchived;
+  if (!vikunjaConfigured) archivedBtn.hidden = true;
+
+  detailFoot.append(editProjectBtn, projectEditMenu, archivedBtn);
 
   detail.append(detailTitle, addForm, list, empty, detailFoot);
   split.append(projectsPane, detail);
@@ -226,17 +235,24 @@ export function mountTasks(root, config = {}) {
     moveSubtasksForm,
   );
 
+  const moveFooter = document.createElement('div');
+  moveFooter.className = 'tasks-panel__move-footer';
+  const moveSave = document.createElement('button');
+  moveSave.type = 'button';
+  moveSave.className = 'tasks-panel__move-save';
+  moveSave.textContent = 'Save & close';
   const moveCancel = document.createElement('button');
   moveCancel.type = 'button';
   moveCancel.className = 'tasks-panel__move-cancel';
-  moveCancel.textContent = 'Close';
+  moveCancel.textContent = 'cancel';
+  moveFooter.append(moveSave, moveCancel);
   moveDialog.append(
     moveRenameLabel,
     moveScheduleSlot,
     moveWaitingSlot,
     moveTagsBtn,
     moveSubtasks,
-    moveCancel,
+    moveFooter,
   );
   moveOverlay.append(moveDialog);
   wrap.append(moveOverlay);
@@ -730,7 +746,7 @@ export function mountTasks(root, config = {}) {
 
       const text = document.createElement('span');
       text.className = 'tasks-panel__move-subtask-text';
-      text.textContent = sub.text;
+      fillLinkifiedText(text, sub.text);
 
       label.append(cb, text);
       li.append(label);
@@ -890,6 +906,30 @@ export function mountTasks(root, config = {}) {
     const prev = items.find((it) => it.id === taskId)?.text || '';
     if (!next || next === prev) return true;
     return renameTask(taskId, next);
+  }
+
+  async function saveAndCloseMoveOverlay() {
+    const taskId = movingTaskId;
+    if (!taskId) {
+      hideMoveOverlay();
+      return;
+    }
+    moveSave.disabled = true;
+    try {
+      const pendingSub = moveSubtasksInput.value.trim();
+      if (pendingSub) {
+        const added = await addSubtask(taskId, pendingSub);
+        if (movingTaskId !== taskId) return;
+        if (!added) return;
+        moveSubtasksInput.value = '';
+      }
+      const renamed = await commitMoveOverlayRename(taskId);
+      if (movingTaskId !== taskId) return;
+      if (!renamed) return;
+      hideMoveOverlay();
+    } finally {
+      moveSave.disabled = false;
+    }
   }
 
   /**
@@ -1207,7 +1247,7 @@ export function mountTasks(root, config = {}) {
 
     const text = document.createElement('span');
     text.className = 'tasks-panel__text';
-    text.textContent = item.text;
+    fillLinkifiedText(text, item.text);
     text.title = 'Double-click to edit task';
 
     label.append(cb, text);
@@ -1552,6 +1592,20 @@ export function mountTasks(root, config = {}) {
     });
   });
 
+  archivedBtn.addEventListener('click', () => {
+    void openRecentlyArchivedTasks({
+      root: wrap,
+      onUnarchive: (item) => {
+        if (!item?.id || !item.text) return;
+        ingestExternalTask({
+          id: String(item.id),
+          text: String(item.text),
+          projectId: item.projectId != null ? Number(item.projectId) : projectId,
+        });
+      },
+    });
+  });
+
   randomBtn.addEventListener('click', () => {
     openRandomTaskPicker({
       root: wrap,
@@ -1594,6 +1648,11 @@ export function mountTasks(root, config = {}) {
     });
   });
 
+  moveSave.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void saveAndCloseMoveOverlay();
+  });
   moveCancel.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();

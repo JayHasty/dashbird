@@ -1,4 +1,5 @@
 import { contactActions } from '../lib/contact-deep-links.js';
+import { fillLinkifiedText } from '../lib/linkify-text.js';
 import { formatContactBirthday } from '../lib/network-birthday.js';
 import {
   formatKidAgeLabel,
@@ -1315,7 +1316,7 @@ export function mountNetworkContactsMobile(root) {
           void persistTasks(cb);
         });
         const text = document.createElement('span');
-        text.textContent = task.text;
+        fillLinkifiedText(text, task.text);
         row.append(cb, text);
         li.append(row);
         taskList.append(li);

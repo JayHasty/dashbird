@@ -75,6 +75,12 @@ Named lanes stay grey until a posting is pasted into the manual source. Org chea
 
 ---
 
+## Default region filter
+
+On every Dashbird page load, Opportunity Watch **resets Region to Bay Area + NYC Area** (closed lanes and DC/Denver/etc. postings stay hidden until you check them). You can change the checkboxes during the session; a refresh puts the default back.
+
+---
+
 ## Row contents
 
 Every row shows priority tier, posted / not posted, and opportunity **type**. Open rows add the

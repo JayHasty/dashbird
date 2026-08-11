@@ -5,6 +5,12 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  loadRecentArchivedTasks,
+  recordRecentArchivedTask,
+  removeRecentArchivedTask,
+  RECENT_ARCHIVED_LIMIT,
+} from './vikunja-recent-archive-store.js';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_TITLE_LEN = 280;
@@ -138,6 +144,7 @@ export function mapVikunjaTask(task) {
       : null;
   const subtasks = task.related_tasks?.subtask;
   const subtaskCount = Array.isArray(subtasks) ? subtasks.length : 0;
+  const doneAt = String(task.done_at || task.updated || '').trim() || null;
   return {
     id,
     text,
@@ -145,6 +152,7 @@ export function mapVikunjaTask(task) {
     projectId,
     isSubtask: vikunjaTaskIsSubtask(task),
     subtaskCount,
+    doneAt,
   };
 }
 
@@ -681,6 +689,92 @@ export async function listPanelTodos(env = process.env, opts = {}) {
   return all;
 }
 
+/**
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {Promise<Map<number, string>>}
+ */
+async function projectTitleById(env = process.env) {
+  const res = await vikunjaFetch('projects?per_page=100', { env });
+  /** @type {Map<number, string>} */
+  const map = new Map();
+  if (!res.ok || !Array.isArray(res.json)) return map;
+  for (const p of res.json) {
+    if (!p || Number(p.id) <= 0) continue;
+    map.set(Number(p.id), normalizeProjectDisplayTitle(p.title, Number(p.id)));
+  }
+  return map;
+}
+
+/**
+ * Last 20 completed tasks (done in place or moved to Archive), newest first.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ limit?: number }} [opts]
+ * @returns {Promise<Array<{ id: string, text: string, projectId: number | null, currentProjectId: number | null, projectTitle: string, archivedAt: string | null, movedToArchive: boolean }>>}
+ */
+export async function listRecentArchivedTodos(env = process.env, opts = {}) {
+  const cfg = resolveVikunjaConfig(env);
+  if (!cfg.configured) {
+    const err = new Error('vikunja_not_configured');
+    err.code = 'vikunja_not_configured';
+    err.status = 503;
+    throw err;
+  }
+  const limit = Math.min(
+    RECENT_ARCHIVED_LIMIT,
+    Math.max(1, Number.isFinite(Number(opts.limit)) ? Number(opts.limit) : RECENT_ARCHIVED_LIMIT),
+  );
+
+  const qs = new URLSearchParams({
+    per_page: String(Math.min(50, limit * 2)),
+    page: '1',
+    sort_by: 'updated',
+    order_by: 'desc',
+    filter: 'done = true',
+  });
+  const [res, stored, titles, archiveId] = await Promise.all([
+    vikunjaFetch(`tasks?${qs}`, { env }),
+    loadRecentArchivedTasks(env).catch(() => []),
+    projectTitleById(env),
+    resolveArchiveProjectId(env).catch(() => null),
+  ]);
+  if (!res.ok) {
+    const err = new Error(safeUpstreamMessage(res) || 'vikunja_list_failed');
+    err.code = 'vikunja_upstream';
+    err.status = res.status >= 400 && res.status < 600 ? res.status : 502;
+    throw err;
+  }
+
+  const storedById = new Map((stored || []).map((it) => [it.id, it]));
+  const rows = Array.isArray(res.json) ? res.json : [];
+  /** @type {Array<{ id: string, text: string, projectId: number | null, currentProjectId: number | null, projectTitle: string, archivedAt: string | null, movedToArchive: boolean }>} */
+  const out = [];
+  for (const row of rows) {
+    if (vikunjaTaskIsSubtask(row)) continue;
+    const mapped = mapVikunjaTask(row);
+    if (!mapped) continue;
+    const remembered = storedById.get(mapped.id);
+    const currentProjectId = mapped.projectId;
+    const inArchive = archiveId != null && currentProjectId === archiveId;
+    const restoreId =
+      remembered?.projectId != null
+        ? remembered.projectId
+        : inArchive
+          ? cfg.projectId
+          : currentProjectId;
+    const titleId = restoreId ?? currentProjectId;
+    out.push({
+      id: mapped.id,
+      text: mapped.text,
+      projectId: restoreId ?? null,
+      currentProjectId,
+      projectTitle: titleId != null ? titles.get(titleId) || 'Project' : 'Project',
+      archivedAt: remembered?.archivedAt || mapped.doneAt || null,
+      movedToArchive: Boolean(remembered?.movedToArchive || inArchive),
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 /**
  * Open tasks across all panel projects (for random task picker).
@@ -865,6 +959,10 @@ export async function setPanelTodoDone(id, done, env = process.env, opts = {}) {
 
   const markDone = Boolean(done);
   const moveToArchive = opts.moveToArchive !== false;
+  const originalProjectId =
+    getRes.json.project_id != null && Number.isFinite(Number(getRes.json.project_id))
+      ? Number(getRes.json.project_id)
+      : null;
   /** @type {Record<string, unknown>} */
   const body = {
     ...getRes.json,
@@ -875,10 +973,19 @@ export async function setPanelTodoDone(id, done, env = process.env, opts = {}) {
   if (markDone && moveToArchive) {
     body.project_id = await resolveArchiveProjectId(env);
   } else if (!markDone) {
-    const restoreId =
+    const archiveId = await resolveArchiveProjectId(env).catch(() => null);
+    let restoreId =
       opts.restoreProjectId != null && Number.isFinite(Number(opts.restoreProjectId))
         ? Number(opts.restoreProjectId)
-        : cfg.projectId;
+        : null;
+    if (restoreId == null) {
+      const remembered = await loadRecentArchivedTasks(env)
+        .then((items) => items.find((it) => it.id === taskId))
+        .catch(() => null);
+      if (remembered?.projectId != null) restoreId = remembered.projectId;
+      else if (archiveId != null && originalProjectId === archiveId) restoreId = cfg.projectId;
+      else restoreId = originalProjectId;
+    }
     if (restoreId != null) body.project_id = restoreId;
   }
 
@@ -894,7 +1001,7 @@ export async function setPanelTodoDone(id, done, env = process.env, opts = {}) {
     throw err;
   }
 
-  return mapVikunjaTask(postRes.json) || {
+  const item = mapVikunjaTask(postRes.json) || {
     id: taskId,
     text: String(getRes.json.title || '').trim(),
     done: markDone,
@@ -905,6 +1012,24 @@ export async function setPanelTodoDone(id, done, env = process.env, opts = {}) {
           ? Number(getRes.json.project_id)
           : null,
   };
+
+  try {
+    if (markDone) {
+      await recordRecentArchivedTask({
+        id: taskId,
+        text: item.text,
+        projectId: originalProjectId,
+        archivedAt: new Date().toISOString(),
+        movedToArchive,
+      }, env);
+    } else {
+      await removeRecentArchivedTask(taskId, env);
+    }
+  } catch {
+    /* recent-archive ledger is best-effort */
+  }
+
+  return item;
 }
 
 /**

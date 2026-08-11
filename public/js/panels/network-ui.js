@@ -4,6 +4,7 @@
  */
 
 import { beginWaitCursor, endWaitCursor } from '../lib/wait-cursor.js';
+import { fillLinkifiedText } from '../lib/linkify-text.js';
 import { formatContactLastContact } from '../lib/network-last-contact.js';
 import { formatContactBirthday } from '../lib/network-birthday.js';
 import {
@@ -3302,7 +3303,7 @@ export function mountNetworkUi(root) {
 
             const text = document.createElement('span');
             text.className = 'network-crm__tasks-text';
-            text.textContent = task.text;
+            fillLinkifiedText(text, task.text);
 
             row.append(cb, text);
             li.append(row);

@@ -9,6 +9,7 @@ import {
   listPanelProjects,
   listPanelSubtasks,
   listPanelTodos,
+  listRecentArchivedTodos,
   movePanelTodo,
   renamePanelProject,
   reorderPanelProjects,
@@ -216,6 +217,19 @@ router.get('/todos/waiting', async (_req, res) => {
     );
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, groups, total: groups.reduce((n, g) => n + g.items.length, 0) });
+  } catch (e) {
+    sendErr(e, res);
+  }
+});
+
+router.get('/todos/archived', async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit);
+    const items = await listRecentArchivedTodos(process.env, {
+      limit: Number.isFinite(limitRaw) ? limitRaw : undefined,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, items });
   } catch (e) {
     sendErr(e, res);
   }

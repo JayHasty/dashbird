@@ -1,4 +1,5 @@
 import { readPanelCache, writePanelCache } from '../lib/panel-cache.js';
+import { locationRegion, locationRegions } from '../lib/job-location-region.js';
 
 const REFRESH_MS = 5 * 60 * 1000;
 const CACHE_KEY = 'job-watch';
@@ -279,7 +280,10 @@ function priorityLabel(priority) {
   return 'Watch';
 }
 
-const FILTER_STORAGE_KEY = 'job-watch-filters-v3';
+const FILTER_STORAGE_KEY = 'job-watch-filters-v4';
+
+/** Reset on every Dashbird page load — only show NYC + Bay Area postings. */
+const DEFAULT_LOCATION_REGIONS = Object.freeze(['Bay Area', 'NYC Area']);
 
 /** Work-mode labels must not live in the geography checkbox list. */
 function isRemoteModeLabel(value) {
@@ -301,7 +305,7 @@ function loadFilters() {
     sources: /** @type {Set<string> | null} */ (null),
     status: /** @type {'all' | 'open' | 'closed'} */ ('all'),
     minStars: /** @type {0 | 1 | 2 | 3} */ (0),
-    locations: /** @type {Set<string> | null} */ (null),
+    locations: new Set(DEFAULT_LOCATION_REGIONS),
     remoteModes: /** @type {Set<string> | null} */ (null),
   };
   try {
@@ -314,16 +318,15 @@ function loadFilters() {
     if (!raw) return defaults;
     const o = JSON.parse(raw);
     const sources = Array.isArray(o.sources) && o.sources.length ? new Set(o.sources.map(String)) : null;
-    // v2 mixed remote labels into locations — peel them apart.
-    const rawLocs = Array.isArray(o.locations) ? o.locations.map(String) : [];
-    const geo = rawLocs.filter((x) => !isRemoteModeLabel(x));
-    const fromLocRemote = rawLocs.filter((x) => isRemoteModeLabel(x));
+    const fromLocRemote = Array.isArray(o.locations)
+      ? o.locations.map(String).filter((x) => isRemoteModeLabel(x))
+      : [];
     const rawRemote = Array.isArray(o.remoteModes) ? o.remoteModes.map(String) : fromLocRemote;
-    const locations = geo.length ? new Set(geo) : null;
     const remoteModes = rawRemote.length ? new Set(rawRemote) : null;
     const status = o.status === 'open' || o.status === 'closed' ? o.status : 'all';
     const minStars = [0, 1, 2, 3].includes(Number(o.minStars)) ? /** @type {0|1|2|3} */ (Number(o.minStars)) : 0;
-    return { sources, status, minStars, locations, remoteModes };
+    // Region always resets to Bay Area + NYC on reload (ignore saved locations).
+    return { sources, status, minStars, locations: new Set(DEFAULT_LOCATION_REGIONS), remoteModes };
   } catch {
     return defaults;
   }
@@ -405,7 +408,7 @@ export function mountJobWatch(root) {
 
   const locationsLabel = document.createElement('p');
   locationsLabel.className = 'job-watch__filter-label';
-  locationsLabel.textContent = 'Location / area';
+  locationsLabel.textContent = 'Region';
   const locationChecks = document.createElement('div');
   locationChecks.className = 'job-watch__checkboxes job-watch__checkboxes--locations';
 
@@ -593,7 +596,10 @@ export function mountJobWatch(root) {
     let nextSelected = selected;
     if (nextSelected) {
       nextSelected = new Set([...nextSelected].filter((id) => all.includes(id)));
-      if (nextSelected.size === all.length) nextSelected = null;
+      // Location: never collapse "all checked" to null — that would unfilter
+      // DC/Denver/etc. the moment a new metro appears. Remote/other groups
+      // still treat a full selection as "no filter".
+      if (sigRefKey !== 'location' && nextSelected.size === all.length) nextSelected = null;
     }
     if (sigRefKey === 'location') {
       filters.locations = nextSelected;
@@ -637,7 +643,12 @@ export function mountJobWatch(root) {
         const checked = [...rootEl.querySelectorAll('input[type="checkbox"]')]
           .filter((el) => el instanceof HTMLInputElement && el.checked)
           .map((el) => /** @type {HTMLInputElement} */ (el).value);
-        onChange(checked.length === all.length ? null : new Set(checked));
+        const allChecked = checked.length === all.length;
+        onChange(
+          allChecked && sigRefKey !== 'location'
+            ? null
+            : new Set(checked),
+        );
       });
       const text = document.createElement('span');
       text.textContent = opt;
@@ -650,9 +661,13 @@ export function mountJobWatch(root) {
    * @param {string[]} locations
    */
   function paintLocationFilters(locations) {
+    const geo = [
+      ...DEFAULT_LOCATION_REGIONS,
+      ...locations.filter((x) => !isRemoteModeLabel(x)),
+    ];
     paintCheckboxGroup(
       locationChecks,
-      locations.filter((x) => !isRemoteModeLabel(x)),
+      geo,
       filters.locations,
       'location',
       (next) => {
@@ -697,11 +712,12 @@ export function mountJobWatch(root) {
 
     // Geography and remote style are separate AND groups.
     if (filters.locations) {
-      const locs = (Array.isArray(item.locations) ? item.locations : []).filter(
-        (x) => !isRemoteModeLabel(x),
+      const regions = locationRegions(
+        Array.isArray(item.locations) ? item.locations : [],
+        isRemoteModeLabel,
       );
       const hit = [...filters.locations].some((want) =>
-        locs.some((have) => String(have).toLowerCase() === String(want).toLowerCase()),
+        regions.some((have) => have.toLowerCase() === String(want).toLowerCase()),
       );
       if (!hit) return false;
     }
@@ -761,14 +777,20 @@ export function mountJobWatch(root) {
     for (const t of targets) {
       for (const loc of t.locations || []) {
         if (isRemoteModeLabel(loc)) remoteUniverse.add(loc);
-        else locationUniverse.add(loc);
+        else {
+          const region = locationRegion(loc);
+          if (region) locationUniverse.add(region);
+        }
       }
       if (t.workMode?.label) remoteUniverse.add(t.workMode.label);
     }
     for (const c of candidates) {
       for (const loc of c.locations || []) {
         if (isRemoteModeLabel(loc)) remoteUniverse.add(loc);
-        else locationUniverse.add(loc);
+        else {
+          const region = locationRegion(loc);
+          if (region) locationUniverse.add(region);
+        }
       }
       if (c.workMode?.label) remoteUniverse.add(c.workMode.label);
     }

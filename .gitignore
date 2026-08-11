@@ -108,3 +108,5 @@ data/gmail-daily-summary-guide-feedback.json
 # Source of truth: portfolio repo → npm run build:deploy
 deploy/jayhasty-site/
 data/away-base.json
+data/daily-scratch.json
+data/vikunja-recent-archive.json
