@@ -14160,7 +14160,18 @@ button.network-crm__person-name--link:hover {
 .panel--keep-notes {
   display: flex;
   flex-direction: column;
+  /* Size the row from Tasks; Notes stretches to that height and scrolls. */
+  height: 0;
   min-height: 100%;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .panel--keep-notes {
+    height: auto;
+    min-height: 14rem;
+    max-height: min(36rem, 70vh);
+  }
 }
 
 .panel--keep-notes > h2 {
@@ -14182,7 +14193,13 @@ button.network-crm__person-name--link:hover {
 .panel--keep-notes > .keep-notes-body {
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 0.45rem 0.55rem 0.55rem;
+}
+
+.panel--keep-notes .keep-notes__shell {
+  min-height: 0;
 }
 
 .keep-notes__shell {
@@ -14662,6 +14679,28 @@ button.network-crm__person-name--link:hover {
   min-height: 0.35rem;
 }
 
+.keep-notes__bullet-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.keep-notes__bullet-mark {
+  flex: 0 0 auto;
+  width: 1rem;
+  color: var(--muted, #9aa3b2);
+  line-height: 1.35;
+  text-align: center;
+}
+
+.keep-notes__bullet-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted, #9aa3b2);
+  line-height: 1.35;
+}
+
 .mobile-shell__pane .keep-notes__check-item-input {
   width: 1.15rem;
   height: 1.15rem;
@@ -14913,7 +14952,9 @@ button.network-crm__person-name--link:hover {
 .panel--tasks {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
 }
 
 .panel--tasks > .tasks-body {
@@ -16171,8 +16212,8 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 1 auto;
+  min-height: auto;
 }
 
 .tasks-panel__header {
@@ -16201,9 +16242,9 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   display: grid;
   grid-template-columns: minmax(9.5rem, 13rem) minmax(0, 1fr);
   gap: 0.75rem;
-  align-items: stretch;
-  flex: 1 1 auto;
-  min-height: 0;
+  align-items: start;
+  flex: 0 1 auto;
+  min-height: auto;
 }
 
 .tasks-panel__projects {
@@ -16585,9 +16626,9 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.32rem;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .tasks-panel__item {
@@ -18962,8 +19003,9 @@ body.dashbird-check-busy * {
 .dev-sticky-note__scratch-tools {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 4px;
-  padding: 4px 6px 0;
+  padding: 0 6px 6px;
 }
 
 .dev-sticky-note__tool {
@@ -20759,6 +20801,11 @@ body.dev-request-mobile-open {
   scrollbar-gutter: stable;
 }
 
+/* Filters open: grow the pane so every checkbox group is on-screen. */
+.life-sidebar__card-body--job-watch:has(.job-watch__toggle--open) {
+  max-height: min(52rem, 90vh);
+}
+
 .job-watch {
   display: flex;
   flex-direction: column;
@@ -20770,6 +20817,7 @@ body.dev-request-mobile-open {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 0.35rem;
 }
 
@@ -20821,6 +20869,8 @@ body.dev-request-mobile-open {
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.22);
+  flex: 0 0 auto;
+  overflow: visible;
 }
 
 .job-watch__filters[hidden] {
@@ -20828,7 +20878,7 @@ body.dev-request-mobile-open {
 }
 
 .job-watch__scan-meta {
-  margin: 0 0 0.15rem;
+  margin: 0;
   font-size: 0.68rem;
   line-height: 1.35;
 }
@@ -20848,8 +20898,6 @@ body.dev-request-mobile-open {
 }
 
 .job-watch__checkboxes--locations {
-  max-height: 7.5rem;
-  overflow-y: auto;
   padding-right: 0.15rem;
 }
 

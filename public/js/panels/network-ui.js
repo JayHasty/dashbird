@@ -37,6 +37,7 @@ import {
   fetchHowWeMetSuggestion,
   howWeMetStatusBit,
 } from '../lib/network-how-we-met-suggest.js?v=how-we-met-1';
+import { notifyContactTasksChanged, onContactTaskDone } from '../lib/task-bridge.js';
 const WORKBENCH_KEY = 'dashbird-network-workbench-v1';
 
 
@@ -745,11 +746,16 @@ export function mountNetworkUi(root) {
       sensitivity: c.sensitivity || '',
       nextStep: c.nextStep || '',
       tasks: Array.isArray(c.tasks)
-        ? c.tasks.map((t) => ({
-            id: String(t.id || ''),
-            text: String(t.text || ''),
-            done: Boolean(t.done),
-          }))
+        ? c.tasks.map((t) => {
+            /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }} */
+            const row = {
+              id: String(t.id || ''),
+              text: String(t.text || ''),
+              done: Boolean(t.done),
+            };
+            if (t.vikunjaTaskId) row.vikunjaTaskId = String(t.vikunjaTaskId);
+            return row;
+          })
         : [],
       mergeSuggestions: Array.isArray(c.mergeSuggestions)
         ? c.mergeSuggestions.map((s) => ({ ...s }))
@@ -1162,7 +1168,7 @@ export function mountNetworkUi(root) {
   let locationOptionsKey = '';
 
   /**
-   * Unique contact locations for the Location multi-select (A→Z).
+   * Unique contact locations for the Location multi-select (California first, then A→Z).
    * @param {object[]} [list]
    * @returns {string[]}
    */
@@ -3239,13 +3245,18 @@ export function mountNetworkUi(root) {
         return row;
       })(),
       (() => {
-        /** @type {{ id: string, text: string, done: boolean }[]} */
+        /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }[]} */
         let draftTasks = Array.isArray(c.tasks)
-          ? c.tasks.map((t) => ({
-              id: String(t.id || `task_${Math.random().toString(36).slice(2, 10)}`),
-              text: String(t.text || '').trim(),
-              done: Boolean(t.done),
-            })).filter((t) => t.text)
+          ? c.tasks.map((t) => {
+              /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }} */
+              const row = {
+                id: String(t.id || `task_${Math.random().toString(36).slice(2, 10)}`),
+                text: String(t.text || '').trim(),
+                done: Boolean(t.done),
+              };
+              if (t.vikunjaTaskId) row.vikunjaTaskId = String(t.vikunjaTaskId);
+              return row;
+            }).filter((t) => t.text)
           : String(c.nextStep || '')
               .split(/\n+|;/)
               .map((s) => s.trim())
@@ -3259,6 +3270,7 @@ export function mountNetworkUi(root) {
         const wrap = document.createElement('div');
         wrap.className = 'network-crm__field network-crm__field--full network-crm__tasks';
         wrap.dataset.tasksField = '1';
+        wrap.dataset.contactId = String(c.id || '');
 
         const label = document.createElement('span');
         label.textContent = 'Tasks';
@@ -3336,12 +3348,25 @@ export function mountNetworkUi(root) {
 
         wrap.getTasks = () =>
           draftTasks
-            .map((t) => ({
-              id: t.id,
-              text: String(t.text || '').trim(),
-              done: Boolean(t.done),
-            }))
+            .map((t) => {
+              /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }} */
+              const row = {
+                id: t.id,
+                text: String(t.text || '').trim(),
+                done: Boolean(t.done),
+              };
+              if (t.vikunjaTaskId) row.vikunjaTaskId = String(t.vikunjaTaskId);
+              return row;
+            })
             .filter((t) => t.text);
+
+        wrap.applyRemoteTaskDone = (contactId, taskId, done) => {
+          if (String(contactId) !== String(c.id || wrap.dataset.contactId || '')) return;
+          const task = draftTasks.find((t) => t.id === taskId);
+          if (!task) return;
+          task.done = Boolean(done);
+          renderTasks();
+        };
 
         wrap.append(label, addRow, list);
         renderTasks();
@@ -3546,6 +3571,7 @@ export function mountNetworkUi(root) {
           }
 
           current = saved;
+          notifyContactTasksChanged();
 
           // Scene tag changes create/update community groups server-side — drop
           // stale Groups prefetch so the next Groups visit sees them.
@@ -3605,7 +3631,8 @@ export function mountNetworkUi(root) {
             || String(saved.nickname || '') !== String(priorBody.nickname || '')
             || !sameJson(saved.kinds || [], priorBody.kinds || [])
             || Boolean(saved.hasKids) !== Boolean(priorBody.hasKids)
-            || String(saved.networkCircles || '') !== String(priorBody.networkCircles || '');
+            || String(saved.networkCircles || '') !== String(priorBody.networkCircles || '')
+            || !sameJson(saved.tasks || [], priorBody.tasks || []);
           if (listLabelChanged || peopleSubTab === 'manage') renderList();
         } while (dirtyWhileSaving && gen === detailGeneration);
 
@@ -6280,6 +6307,23 @@ export function mountNetworkUi(root) {
       }
     }
   }
+
+  onContactTaskDone(({ contactId, taskId, done }) => {
+    const idx = contacts.findIndex((c) => String(c.id) === String(contactId));
+    if (idx >= 0 && Array.isArray(contacts[idx].tasks)) {
+      contacts[idx] = {
+        ...contacts[idx],
+        tasks: contacts[idx].tasks.map((t) =>
+          t.id === taskId ? { ...t, done: Boolean(done) } : t,
+        ),
+      };
+    }
+    const wrap = root.querySelector('[data-tasks-field]');
+    if (wrap && typeof wrap.applyRemoteTaskDone === 'function') {
+      wrap.applyRemoteTaskDone(contactId, taskId, done);
+    }
+    renderList();
+  });
 
   window.addEventListener('beforeunload', (e) => {
     if (!detailDirty) return;

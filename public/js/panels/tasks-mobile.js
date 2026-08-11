@@ -13,17 +13,22 @@ import {
   ensureOverduePriority,
   scheduleTaskToCalendar,
 } from '../lib/task-schedule.js';
+import {
+  CONTACT_TASKS_PROJECT_TITLE,
+  notifyContactTaskDone,
+  onContactTasksChanged,
+} from '../lib/task-bridge.js';
+import {
+  pushMobileNav,
+  mobileNavBack,
+  isMobileNavApplying,
+} from '../lib/mobile-history.js';
 
 /**
  * Mobile Vikunja Tasks: project list → task detail (add / complete).
  * @param {HTMLElement | null} root
  * @param {{ vikunjaPublicUrl?: string, vikunjaConfigured?: boolean }} [config]
  */
-import {
-  pushMobileNav,
-  mobileNavBack,
-  isMobileNavApplying,
-} from '../lib/mobile-history.js';
 import { fillLinkifiedText } from '../lib/linkify-text.js';
 import { TASKS_LABELS } from '../lib/network-labels.js';
 
@@ -1362,6 +1367,7 @@ export function mountTasksMobile(root, config = {}) {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+      notifyContactTaskDone(j.contactTask || j.item?.contactTask);
       const cleared = await clearTaskSchedule(id);
       if (cleared) taskRandomMeta = cleared;
       items = items.filter((it) => it.id !== id);
@@ -1831,6 +1837,21 @@ export function mountTasksMobile(root, config = {}) {
   });
 
   void loadProjects();
+
+  onContactTasksChanged(() => {
+    void (async () => {
+      const wasProject = view === 'detail' && projectId != null;
+      const prevId = projectId;
+      await loadProjects();
+      const contactProj = projects.find(
+        (p) =>
+          String(p.title || '').trim().toLowerCase() === CONTACT_TASKS_PROJECT_TITLE.toLowerCase(),
+      );
+      if (wasProject && contactProj && prevId === contactProj.id && view === 'detail') {
+        await loadTodos();
+      }
+    })();
+  });
 
   document.addEventListener('dashbird:mobile-nav', (e) => {
     const s = e.detail;

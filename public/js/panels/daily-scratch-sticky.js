@@ -128,7 +128,7 @@ export function mountDailyScratchSticky() {
   editor.setAttribute('aria-label', "Today's scratch");
   editor.dataset.placeholder = "Today's scratch…";
 
-  body.append(tools, editor);
+  body.append(editor, tools);
   root.append(header, body);
 
   function persistLocal() {

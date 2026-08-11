@@ -21,6 +21,7 @@ import {
 } from '../lib/mobile-history.js';
 import { addSceneToken } from '../lib/network-scene-tokens.js';
 import { openShareContactInfoDialog } from '../lib/network-share-contact.js?v=share-contact-1';
+import { notifyContactTasksChanged, onContactTaskDone } from '../lib/task-bridge.js';
 
 const RELATIONSHIP_STATUSES = [
   'Lead',
@@ -1223,20 +1224,26 @@ export function mountNetworkContactsMobile(root) {
       kindsBox.append(lab);
     }
 
-    /** @type {{ id: string, text: string, done: boolean }[]} */
+    /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }[]} */
     let draftTasks = Array.isArray(current.tasks)
       ? current.tasks
-          .map((t) => ({
-            id: String(t.id || `task_${Math.random().toString(36).slice(2, 10)}`),
-            text: String(t.text || '').trim(),
-            done: Boolean(t.done),
-          }))
+          .map((t) => {
+            /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }} */
+            const row = {
+              id: String(t.id || `task_${Math.random().toString(36).slice(2, 10)}`),
+              text: String(t.text || '').trim(),
+              done: Boolean(t.done),
+            };
+            if (t.vikunjaTaskId) row.vikunjaTaskId = String(t.vikunjaTaskId);
+            return row;
+          })
           .filter((t) => t.text)
       : [];
 
     const tasksWrap = document.createElement('div');
     tasksWrap.className = 'mobile-network__field mobile-network__tasks';
     tasksWrap.dataset.tasksField = '1';
+    tasksWrap.dataset.contactId = String(current.id || '');
     const tasksLabel = document.createElement('span');
     tasksLabel.className = 'mobile-network__field-label';
     tasksLabel.textContent = 'Tasks';
@@ -1264,11 +1271,16 @@ export function mountNetworkContactsMobile(root) {
      */
     async function persistTasks(cb = null) {
       const tasks = draftTasks
-        .map((t) => ({
-          id: t.id,
-          text: String(t.text || '').trim(),
-          done: Boolean(t.done),
-        }))
+        .map((t) => {
+          /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }} */
+          const row = {
+            id: t.id,
+            text: String(t.text || '').trim(),
+            done: Boolean(t.done),
+          };
+          if (t.vikunjaTaskId) row.vikunjaTaskId = String(t.vikunjaTaskId);
+          return row;
+        })
         .filter((t) => t.text);
       if (cb) cb.disabled = true;
       taskStatus.hidden = false;
@@ -1286,7 +1298,16 @@ export function mountNetworkContactsMobile(root) {
           current = { ...current, tasks: data.contact.tasks || tasks };
           const idx = contacts.findIndex((x) => x.id === current.id);
           if (idx >= 0) contacts[idx] = { ...contacts[idx], tasks: current.tasks };
+          draftTasks = Array.isArray(current.tasks)
+            ? current.tasks.map((t) => ({
+                id: String(t.id || ''),
+                text: String(t.text || '').trim(),
+                done: Boolean(t.done),
+                ...(t.vikunjaTaskId ? { vikunjaTaskId: String(t.vikunjaTaskId) } : {}),
+              }))
+            : tasks;
         }
+        notifyContactTasksChanged();
         taskStatus.textContent = 'Saved';
         setTimeout(() => {
           if (taskStatus.textContent === 'Saved') taskStatus.hidden = true;
@@ -1304,6 +1325,7 @@ export function mountNetworkContactsMobile(root) {
       for (const task of draftTasks) {
         const li = document.createElement('li');
         li.className = 'mobile-network__tasks-item';
+        li.dataset.id = task.id;
         if (task.done) li.classList.add('mobile-network__tasks-item--done');
         const row = document.createElement('label');
         row.className = 'mobile-network__tasks-row';
@@ -1357,12 +1379,24 @@ export function mountNetworkContactsMobile(root) {
       // the form without firing Enter, which previously dropped the new task.
       tryAddTask();
       return draftTasks
-        .map((t) => ({
-          id: t.id,
-          text: String(t.text || '').trim(),
-          done: Boolean(t.done),
-        }))
+        .map((t) => {
+          /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }} */
+          const row = {
+            id: t.id,
+            text: String(t.text || '').trim(),
+            done: Boolean(t.done),
+          };
+          if (t.vikunjaTaskId) row.vikunjaTaskId = String(t.vikunjaTaskId);
+          return row;
+        })
         .filter((t) => t.text);
+    };
+    /** @type {any} */ (tasksWrap).applyRemoteTaskDone = (contactId, taskId, done) => {
+      if (String(contactId) !== String(current.id || '')) return;
+      const task = draftTasks.find((t) => t.id === taskId);
+      if (!task) return;
+      task.done = Boolean(done);
+      renderTasks();
     };
     tasksWrap.append(tasksLabel, addInput, taskList, taskStatus);
     renderTasks();
@@ -1616,6 +1650,7 @@ export function mountNetworkContactsMobile(root) {
         current = data.contact || { ...current, ...body };
         const idx = contacts.findIndex((x) => x.id === current.id);
         if (idx >= 0) contacts[idx] = current;
+        notifyContactTasksChanged();
         dirty = false;
         nameEl.textContent = contactName(current);
         const nextSub = contactSub(current);
@@ -1935,6 +1970,23 @@ export function mountNetworkContactsMobile(root) {
 
   applyDefaultPeopleFiltersToUi();
   void load();
+
+  onContactTaskDone(({ contactId, taskId, done }) => {
+    const idx = contacts.findIndex((c) => String(c.id) === String(contactId));
+    if (idx >= 0 && Array.isArray(contacts[idx].tasks)) {
+      contacts[idx] = {
+        ...contacts[idx],
+        tasks: contacts[idx].tasks.map((t) =>
+          t.id === taskId ? { ...t, done: Boolean(done) } : t,
+        ),
+      };
+    }
+    const wrap = root.querySelector('[data-tasks-field]');
+    if (wrap && typeof wrap.applyRemoteTaskDone === 'function') {
+      wrap.applyRemoteTaskDone(contactId, taskId, done);
+    }
+    renderList();
+  });
 
   document.addEventListener('dashbird:mobile-nav', (e) => {
     const s = e.detail;

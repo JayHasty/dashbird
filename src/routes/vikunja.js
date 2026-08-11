@@ -257,7 +257,7 @@ router.patch('/todos/:id/done', async (req, res) => {
       moveToArchive,
     });
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ ok: true, item });
+    res.json({ ok: true, item, contactTask: item?.contactTask || null });
   } catch (e) {
     sendErr(e, res);
   }
@@ -270,7 +270,7 @@ router.patch('/todos/:id/undo', async (req, res) => {
       restoreProjectId,
     });
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ ok: true, item });
+    res.json({ ok: true, item, contactTask: item?.contactTask || null });
   } catch (e) {
     sendErr(e, res);
   }

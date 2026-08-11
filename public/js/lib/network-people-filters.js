@@ -1,5 +1,8 @@
+import { compareContactLocationLabels } from './network-california-location.js';
+
 /**
  * Shared people-list filter helpers (desktop + mobile Network contacts).
+ * Location options: California cities first, then everywhere else (A→Z within each group).
  * @param {object[]} list
  * @returns {string[]}
  */
@@ -14,7 +17,5 @@ export function collectContactLocationOptions(list = []) {
     const key = loc.toLowerCase();
     if (!seen.has(key)) seen.set(key, loc);
   }
-  return [...seen.values()].sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: 'base' }),
-  );
+  return [...seen.values()].sort(compareContactLocationLabels);
 }

@@ -291,6 +291,13 @@ function isRemoteModeLabel(value) {
   return /^(in-house only|remote TBD|\d{1,3}% remote|100% remote)$/i.test(s);
 }
 
+/** "Remote" is a work-mode concern — never a Region checkbox. */
+function isRemoteGeographyLabel(value) {
+  const s = String(value || '').trim();
+  if (isRemoteModeLabel(s)) return true;
+  return /^(remote|home[-\s]?based)$/i.test(s);
+}
+
 /**
  * @returns {{
  *   sources: Set<string> | null,
@@ -377,7 +384,6 @@ export function mountJobWatch(root) {
   toggleArrow.className = 'job-watch__toggle-arrow';
   toggleArrow.setAttribute('aria-hidden', 'true');
   toggleBtn.append(toggleLabel, toggleArrow);
-  toolbar.append(toggleBtn);
 
   const filterPanel = document.createElement('div');
   filterPanel.id = 'job-watch-filters';
@@ -387,6 +393,7 @@ export function mountJobWatch(root) {
   const scanMeta = document.createElement('p');
   scanMeta.className = 'muted job-watch__scan-meta';
   scanMeta.textContent = 'Loading…';
+  toolbar.append(toggleBtn, scanMeta);
 
   const companiesLabel = document.createElement('p');
   companiesLabel.className = 'job-watch__filter-label';
@@ -419,17 +426,16 @@ export function mountJobWatch(root) {
   remoteChecks.className = 'job-watch__checkboxes';
 
   filterPanel.append(
-    scanMeta,
-    companiesLabel,
-    companyChecks,
-    statusLabel,
-    statusRow,
-    starsLabel,
-    starsRow,
     locationsLabel,
     locationChecks,
+    starsLabel,
+    starsRow,
+    companiesLabel,
+    companyChecks,
     remoteLabel,
     remoteChecks,
+    statusLabel,
+    statusRow,
   );
 
   const list = document.createElement('ul');
@@ -472,6 +478,7 @@ export function mountJobWatch(root) {
     filterPanel.hidden = !open;
     toggleBtn.classList.toggle('job-watch__toggle--open', open);
     toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) root.scrollTop = 0;
   });
 
   function persistAndRepaint() {
@@ -591,7 +598,17 @@ export function mountJobWatch(root) {
    * @param {string} emptyText
    */
   function paintCheckboxGroup(rootEl, options, selected, sigRefKey, onChange, emptyText) {
-    const all = [...options].sort((a, b) => a.localeCompare(b));
+    const seen = new Set();
+    const all = [];
+    for (const raw of options) {
+      const s = String(raw || '').trim();
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(s);
+    }
+    all.sort((a, b) => a.localeCompare(b));
     const sig = all.join('|');
     let nextSelected = selected;
     if (nextSelected) {
@@ -663,7 +680,11 @@ export function mountJobWatch(root) {
   function paintLocationFilters(locations) {
     const geo = [
       ...DEFAULT_LOCATION_REGIONS,
-      ...locations.filter((x) => !isRemoteModeLabel(x)),
+      ...locations.filter(
+        (x) =>
+          !isRemoteGeographyLabel(x) &&
+          !DEFAULT_LOCATION_REGIONS.some((d) => d.toLowerCase() === String(x).toLowerCase()),
+      ),
     ];
     paintCheckboxGroup(
       locationChecks,
@@ -714,7 +735,7 @@ export function mountJobWatch(root) {
     if (filters.locations) {
       const regions = locationRegions(
         Array.isArray(item.locations) ? item.locations : [],
-        isRemoteModeLabel,
+        isRemoteGeographyLabel,
       );
       const hit = [...filters.locations].some((want) =>
         regions.some((have) => have.toLowerCase() === String(want).toLowerCase()),
@@ -761,11 +782,9 @@ export function mountJobWatch(root) {
             minute: '2-digit',
           })
         : '—';
-    const sourceNames = sources.map((s) => s.label || s.id).filter(Boolean);
-    const who = sourceNames.length ? sourceNames.join(' · ') : 'Anthropic';
     scanMeta.textContent = data?.lastScanError
-      ? `${who} · scanned ${whenTxt} · ${data.lastScanError}`
-      : `${who} · scanned ${whenTxt}`;
+      ? `Scanned ${whenTxt} · ${data.lastScanError}`
+      : `Scanned ${whenTxt}`;
 
     const targets = Array.isArray(data?.targets) ? [...data.targets] : [];
     const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
@@ -776,21 +795,17 @@ export function mountJobWatch(root) {
     const remoteUniverse = new Set();
     for (const t of targets) {
       for (const loc of t.locations || []) {
-        if (isRemoteModeLabel(loc)) remoteUniverse.add(loc);
-        else {
-          const region = locationRegion(loc);
-          if (region) locationUniverse.add(region);
-        }
+        if (isRemoteGeographyLabel(loc)) continue;
+        const region = locationRegion(loc);
+        if (region && !isRemoteGeographyLabel(region)) locationUniverse.add(region);
       }
       if (t.workMode?.label) remoteUniverse.add(t.workMode.label);
     }
     for (const c of candidates) {
       for (const loc of c.locations || []) {
-        if (isRemoteModeLabel(loc)) remoteUniverse.add(loc);
-        else {
-          const region = locationRegion(loc);
-          if (region) locationUniverse.add(region);
-        }
+        if (isRemoteGeographyLabel(loc)) continue;
+        const region = locationRegion(loc);
+        if (region && !isRemoteGeographyLabel(region)) locationUniverse.add(region);
       }
       if (c.workMode?.label) remoteUniverse.add(c.workMode.label);
     }

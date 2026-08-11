@@ -645,13 +645,19 @@ function mergeContactTasks(keep, drop) {
         const idx = byText.get(key);
         if (idx == null) {
           byText.set(key, out.length);
-          out.push({
+          const vid = String(item.vikunjaTaskId || item.vikunja_task_id || '').trim();
+          /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }} */
+          const row = {
             id: String(item.id || '').trim().slice(0, 80) || `task_${out.length + 1}`,
             text,
             done,
-          });
+          };
+          if (/^\d+$/.test(vid)) row.vikunjaTaskId = vid;
+          out.push(row);
         } else if (done) {
           out[idx].done = true;
+          const vid = String(item.vikunjaTaskId || item.vikunja_task_id || '').trim();
+          if (/^\d+$/.test(vid) && !out[idx].vikunjaTaskId) out[idx].vikunjaTaskId = vid;
         }
       }
       return;

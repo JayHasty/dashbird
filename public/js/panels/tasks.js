@@ -13,7 +13,12 @@ import {
   ensureOverduePriority,
   scheduleTaskToCalendar,
 } from '../lib/task-schedule.js';
-import { onTaskCreated } from '../lib/task-bridge.js';
+import {
+  CONTACT_TASKS_PROJECT_TITLE,
+  notifyContactTaskDone,
+  onContactTasksChanged,
+  onTaskCreated,
+} from '../lib/task-bridge.js';
 import { TASKS_LABELS } from '../lib/network-labels.js';
 import { fillLinkifiedText } from '../lib/linkify-text.js';
 
@@ -1385,6 +1390,7 @@ export function mountTasks(root, config = {}) {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+      notifyContactTaskDone(j.contactTask || j.item?.contactTask);
       const cleared = await clearTaskSchedule(id);
       if (cleared) taskRandomMeta = cleared;
       items = items.filter((it) => it.id !== id);
@@ -1667,6 +1673,43 @@ export function mountTasks(root, config = {}) {
   });
 
   onTaskCreated(ingestExternalTask);
+  onContactTasksChanged(() => {
+    void refreshContactTasksMirror();
+  });
+
+  async function refreshContactTasksMirror() {
+    try {
+      const r = await fetch('/api/vikunja/projects', { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false || !Array.isArray(j.projects)) return;
+      const byId = new Map(projects.map((p) => [p.id, p]));
+      for (const p of j.projects) {
+        const id = Number(p.id);
+        if (!Number.isFinite(id) || id <= 0) continue;
+        const row = {
+          id,
+          title: String(p.title || ''),
+          position: Number(p.position) || id,
+        };
+        const existing = byId.get(id);
+        if (existing) {
+          existing.title = row.title;
+          existing.position = row.position;
+        } else {
+          projects.push(row);
+        }
+      }
+      sortProjectsInPlace();
+      renderProjects();
+      const contactProj = projects.find(
+        (p) =>
+          String(p.title || '').trim().toLowerCase() === CONTACT_TASKS_PROJECT_TITLE.toLowerCase(),
+      );
+      if (contactProj && projectId === contactProj.id) await loadTodos({ soft: true });
+    } catch {
+      /* ignore */
+    }
+  }
 
   void bootstrap().catch(() => {
     setWritable(false);

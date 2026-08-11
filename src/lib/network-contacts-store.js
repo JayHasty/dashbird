@@ -338,33 +338,42 @@ export function normalizeMergeSuggestions(raw) {
 /**
  * Normalize contact task checklist. Migrates legacy `nextStep` string into one open task.
  * @param {unknown} raw
- * @returns {{ id: string, text: string, done: boolean }[]}
+ * @returns {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }[]}
  */
 export function normalizeTasks(raw) {
   if (!raw || typeof raw !== 'object') return [];
-  /** @type {{ id: string, text: string, done: boolean }[]} */
+  /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }[]} */
   const out = [];
   const seen = new Set();
-  const pushTask = (id, text, done) => {
+  const pushTask = (id, text, done, vikunjaTaskId) => {
     const t = cleanStr(text, 500);
     if (!t) return;
     const key = `${done ? '1' : '0'}:${t.toLowerCase()}`;
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({
+    /** @type {{ id: string, text: string, done: boolean, vikunjaTaskId?: string }} */
+    const row = {
       id: cleanStr(id, 80) || newContactTaskId(),
       text: t,
       done: Boolean(done),
-    });
+    };
+    const vid = String(vikunjaTaskId || '').trim();
+    if (/^\d+$/.test(vid)) row.vikunjaTaskId = vid;
+    out.push(row);
   };
 
   if (Array.isArray(raw.tasks)) {
     for (const item of raw.tasks) {
       if (!item || typeof item !== 'object') {
-        if (typeof item === 'string') pushTask('', item, false);
+        if (typeof item === 'string') pushTask('', item, false, '');
         continue;
       }
-      pushTask(item.id, item.text ?? item.title ?? item.label, item.done);
+      pushTask(
+        item.id,
+        item.text ?? item.title ?? item.label,
+        item.done,
+        item.vikunjaTaskId ?? item.vikunja_task_id,
+      );
       if (out.length >= 40) break;
     }
   }
@@ -677,7 +686,7 @@ export async function getContactById(id, env = process.env) {
 /**
  * @param {object} contact
  * @param {NodeJS.ProcessEnv} [env]
- * @param {{ skipGroupSync?: boolean, skipAbsorb?: boolean }} [opts]
+ * @param {{ skipGroupSync?: boolean, skipAbsorb?: boolean, skipContactTaskSync?: boolean }} [opts]
  */
 export async function addContact(contact, env = process.env, opts = {}) {
   let payload = { ...contact };
@@ -719,7 +728,7 @@ export async function addContact(contact, env = process.env, opts = {}) {
             /* best-effort */
           }
         }
-        return absorbed.contact;
+        return maybeSyncNewContactTasks(absorbed.contact, env, opts);
       }
     } catch {
       // Dedup is best-effort — still create the contact.
@@ -736,7 +745,25 @@ export async function addContact(contact, env = process.env, opts = {}) {
       /* best-effort */
     }
   }
-  return normalized;
+  return maybeSyncNewContactTasks(normalized, env, opts);
+}
+
+/**
+ * @param {object} contact
+ * @param {NodeJS.ProcessEnv} env
+ * @param {{ skipContactTaskSync?: boolean }} opts
+ */
+async function maybeSyncNewContactTasks(contact, env, opts) {
+  if (opts?.skipContactTaskSync) return contact;
+  const hasTasks = (contact?.tasks || []).some((t) => t && String(t.text || '').trim());
+  if (!hasTasks) return contact;
+  try {
+    const { syncContactTasksToVikunja } = await import('./contact-tasks-vikunja-sync.js');
+    return (await syncContactTasksToVikunja(contact, env)) || contact;
+  } catch (e) {
+    console.warn('[contact-tasks]', e?.message || e);
+    return contact;
+  }
 }
 
 /**
@@ -830,7 +857,7 @@ export async function addContactsBulk(names, defaults = {}, env = process.env) {
  * @param {string} id
  * @param {object} patch
  * @param {NodeJS.ProcessEnv} [env]
- * @param {{ skipGroupSync?: boolean }} [opts]
+ * @param {{ skipGroupSync?: boolean, skipContactTaskSync?: boolean }} [opts]
  */
 export async function updateContact(id, patch, env = process.env, opts = {}) {
   const prev = await getContactById(id, env);
@@ -859,7 +886,15 @@ export async function updateContact(id, patch, env = process.env, opts = {}) {
     merged.alignedActivities = patch.alignedActivities;
   }
   if (patch && Object.prototype.hasOwnProperty.call(patch, 'tasks')) {
-    merged.tasks = patch.tasks;
+    const prevById = new Map(
+      (Array.isArray(prev.tasks) ? prev.tasks : []).map((t) => [String(t.id || ''), t]),
+    );
+    merged.tasks = (Array.isArray(patch.tasks) ? patch.tasks : []).map((t) => {
+      if (!t || typeof t !== 'object') return t;
+      const prevT = prevById.get(String(t.id || ''));
+      const vid = t.vikunjaTaskId || t.vikunja_task_id || prevT?.vikunjaTaskId;
+      return vid ? { ...t, vikunjaTaskId: vid } : t;
+    });
     // Prefer explicit tasks list over a stale nextStep string in the same patch.
     if (!Object.prototype.hasOwnProperty.call(patch, 'nextStep')) {
       delete merged.nextStep;
@@ -1006,6 +1041,20 @@ export async function updateContact(id, patch, env = process.env, opts = {}) {
       // Group sync is best-effort — contact save already succeeded.
     }
   }
+
+  if (!opts.skipContactTaskSync) {
+    try {
+      const { contactNeedsVikunjaTaskSync, syncContactTasksToVikunja } = await import(
+        './contact-tasks-vikunja-sync.js'
+      );
+      if (contactNeedsVikunjaTaskSync(prev, saved)) {
+        const mirrored = await syncContactTasksToVikunja(saved, env);
+        if (mirrored) saved = mirrored;
+      }
+    } catch (e) {
+      console.warn('[contact-tasks]', e?.message || e);
+    }
+  }
   return saved;
 }
 
@@ -1018,6 +1067,12 @@ export async function deleteContacts(ids, env = process.env) {
     Boolean,
   );
   if (!want.length) return { deleted: 0 };
+  /** @type {object[]} */
+  const vikunjaMirror = [];
+  for (const id of want) {
+    const c = await getContactById(id, env);
+    if (c && (c.tasks || []).some((t) => t?.vikunjaTaskId)) vikunjaMirror.push(c);
+  }
   const db = openNetworkDb(env);
   const foundationIds = new Set([JULIA_CONTACT_ID, SAM_CONTACT_ID]);
   // #region agent log
@@ -1064,6 +1119,17 @@ export async function deleteContacts(ids, env = process.env) {
       /* ignore */
     }
     throw e;
+  }
+
+  if (deleted && vikunjaMirror.length) {
+    try {
+      const { removeContactTasksFromVikunja } = await import('./contact-tasks-vikunja-sync.js');
+      for (const c of vikunjaMirror) {
+        await removeContactTasksFromVikunja(c, env);
+      }
+    } catch (e) {
+      console.warn('[contact-tasks]', e?.message || e);
+    }
   }
 
   // Remove local avatar files referenced by deleted contacts.

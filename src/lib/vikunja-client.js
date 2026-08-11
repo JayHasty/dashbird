@@ -153,6 +153,7 @@ export function mapVikunjaTask(task) {
     isSubtask: vikunjaTaskIsSubtask(task),
     subtaskCount,
     doneAt,
+    description: String(task.description || ''),
   };
 }
 
@@ -821,7 +822,7 @@ export function normalizeTodoDueDate(value) {
 /**
  * @param {string} title
  * @param {NodeJS.ProcessEnv} [env]
- * @param {{ dueDate?: string | null, projectId?: number | null }} [opts]
+ * @param {{ dueDate?: string | null, projectId?: number | null, description?: string | null }} [opts]
  */
 export async function createPanelTodo(title, env = process.env, opts = {}) {
   const cfg = resolveVikunjaConfig(env);
@@ -850,10 +851,12 @@ export async function createPanelTodo(title, env = process.env, opts = {}) {
     throw err;
   }
 
-  /** @type {{ title: string, due_date?: string }} */
+  /** @type {{ title: string, due_date?: string, description?: string }} */
   const body = { title: text };
   const dueDate = normalizeTodoDueDate(opts?.dueDate);
   if (dueDate) body.due_date = dueDate;
+  const description = String(opts?.description || '').trim();
+  if (description) body.description = description.slice(0, 2000);
 
   const res = await vikunjaFetch(`projects/${projectId}/tasks`, {
     method: 'PUT',
@@ -931,7 +934,7 @@ export async function resolveArchiveProjectId(env = process.env) {
  * @param {string} id
  * @param {boolean} done
  * @param {NodeJS.ProcessEnv} [env]
- * @param {{ moveToArchive?: boolean, restoreProjectId?: number | null }} [opts]
+ * @param {{ moveToArchive?: boolean, restoreProjectId?: number | null, skipContactApply?: boolean }} [opts]
  */
 export async function setPanelTodoDone(id, done, env = process.env, opts = {}) {
   const cfg = resolveVikunjaConfig(env);
@@ -1029,6 +1032,24 @@ export async function setPanelTodoDone(id, done, env = process.env, opts = {}) {
     /* recent-archive ledger is best-effort */
   }
 
+  if (!opts.skipContactApply) {
+    try {
+      const { applyVikunjaDoneToContact } = await import('./contact-tasks-vikunja-sync.js');
+      const contactTask = await applyVikunjaDoneToContact(
+        {
+          vikunjaId: taskId,
+          done: markDone,
+          description: getRes.json.description,
+          title: item.text,
+        },
+        env,
+      );
+      if (contactTask) item.contactTask = contactTask;
+    } catch {
+      /* contact-card mirror is best-effort */
+    }
+  }
+
   return item;
 }
 
@@ -1074,6 +1095,73 @@ export async function updatePanelTodoText(id, text, env = process.env) {
       ...getRes.json,
       title: normalized,
     },
+    env,
+  });
+  if (!postRes.ok) {
+    const err = new Error(safeUpstreamMessage(postRes) || 'vikunja_update_failed');
+    err.code = 'vikunja_upstream';
+    err.status = postRes.status >= 400 && postRes.status < 600 ? postRes.status : 502;
+    throw err;
+  }
+
+  const item = mapVikunjaTask(postRes.json);
+  if (!item) {
+    const err = new Error('vikunja_update_failed');
+    err.code = 'vikunja_upstream';
+    err.status = 502;
+    throw err;
+  }
+  return item;
+}
+
+/**
+ * Patch title and/or description without changing done state.
+ * @param {string} id
+ * @param {{ title?: string, description?: string }} fields
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export async function updatePanelTodoMeta(id, fields, env = process.env) {
+  const taskId = String(id || '').trim();
+  if (!/^\d+$/.test(taskId)) {
+    const err = new Error('invalid_id');
+    err.code = 'invalid_id';
+    err.status = 400;
+    throw err;
+  }
+
+  const getRes = await vikunjaFetch(`tasks/${taskId}`, { env });
+  if (getRes.status === 404) {
+    const err = new Error('not_found');
+    err.code = 'not_found';
+    err.status = 404;
+    throw err;
+  }
+  if (!getRes.ok || !getRes.json || typeof getRes.json !== 'object') {
+    const err = new Error(safeUpstreamMessage(getRes) || 'vikunja_get_failed');
+    err.code = 'vikunja_upstream';
+    err.status = getRes.status >= 400 && getRes.status < 600 ? getRes.status : 502;
+    throw err;
+  }
+
+  /** @type {Record<string, unknown>} */
+  const body = { ...getRes.json };
+  if (fields?.title != null) {
+    const normalized = normalizeTodoTitle(fields.title);
+    if (!normalized) {
+      const err = new Error('invalid_text');
+      err.code = 'invalid_text';
+      err.status = 400;
+      throw err;
+    }
+    body.title = normalized;
+  }
+  if (fields?.description != null) {
+    body.description = String(fields.description).slice(0, 2000);
+  }
+
+  const postRes = await vikunjaFetch(`tasks/${taskId}`, {
+    method: 'POST',
+    body,
     env,
   });
   if (!postRes.ok) {

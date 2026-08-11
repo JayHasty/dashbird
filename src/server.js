@@ -285,4 +285,12 @@ app.listen(port, '0.0.0.0', () => {
   kick(() => {
     void resolveDashboardWeatherLatLon().catch(() => {});
   }, 300);
+  kick(() => {
+    void import('./lib/contact-tasks-vikunja-sync.js')
+      .then(({ syncAllContactTasksToVikunja }) => syncAllContactTasksToVikunja())
+      .then((r) => {
+        if (r?.contacts) console.log(`[contact-tasks] synced ${r.contacts} contact(s)`);
+      })
+      .catch((e) => console.warn('[contact-tasks]', e?.message || e));
+  }, 1600);
 });

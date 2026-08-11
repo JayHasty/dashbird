@@ -58,11 +58,16 @@ export function mountKeepNotes(root) {
     '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>';
   const CHECKLIST_ICON =
     '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+  const BULLETS_ICON =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="5" cy="6" r="1.6" fill="currentColor"/><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="5" cy="18" r="1.6" fill="currentColor"/><path fill="currentColor" d="M10 5h10v2H10zm0 6h10v2H10zm0 6h10v2H10z"/></svg>';
 
   /** Keep Takeout / import format for checklist lines in note body. */
   const CHECK_OPEN = '\u2610';
   const CHECK_DONE = '\u2611';
   const CHECK_LINE_RE = /^([\u2610\u2611])(?:[ \t]+(.*))?$/;
+  const BULLET_MARK = '\u2022';
+  const BULLET_PREFIX = `${BULLET_MARK} `;
+  const BULLET_LINE_RE = /^[\u2022]\s+(.*)$/;
 
   /**
    * @param {string} line
@@ -75,12 +80,38 @@ export function mountKeepNotes(root) {
   }
 
   /**
+   * @param {string} line
+   * @returns {{ text: string } | null}
+   */
+  function parseBulletLine(line) {
+    const m = String(line || '').match(BULLET_LINE_RE);
+    if (!m) return null;
+    return { text: m[1] != null ? m[1] : '' };
+  }
+
+  /**
    * @param {string} body
    */
   function bodyHasChecklist(body) {
     return String(body || '')
       .split('\n')
       .some((line) => parseCheckLine(line));
+  }
+
+  /**
+   * @param {string} body
+   */
+  function bodyHasBullets(body) {
+    return String(body || '')
+      .split('\n')
+      .some((line) => parseBulletLine(line));
+  }
+
+  /**
+   * @param {string} body
+   */
+  function bodyHasList(body) {
+    return bodyHasChecklist(body) || bodyHasBullets(body);
   }
 
   /**
@@ -129,9 +160,11 @@ export function mountKeepNotes(root) {
       const caret = lineStart + `${CHECK_OPEN} `.length;
       textarea.setSelectionRange(caret, caret);
     } else {
-      const next = `${value.slice(0, lineStart)}${CHECK_OPEN} ${line}${value.slice(lineEnd)}`;
+      const bullet = parseBulletLine(line);
+      const text = bullet ? bullet.text : line;
+      const next = `${value.slice(0, lineStart)}${CHECK_OPEN} ${text}${value.slice(lineEnd)}`;
       textarea.value = next;
-      const caret = lineStart + `${CHECK_OPEN} `.length + line.length;
+      const caret = lineStart + `${CHECK_OPEN} `.length + text.length;
       textarea.setSelectionRange(caret, caret);
     }
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -144,6 +177,7 @@ export function mountKeepNotes(root) {
    * @param {HTMLTextAreaElement} textarea
    */
   function handleChecklistKeydown(e, textarea) {
+    if (e.defaultPrevented) return;
     if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
     const value = textarea.value;
     const start = textarea.selectionStart ?? 0;
@@ -173,6 +207,77 @@ export function mountKeepNotes(root) {
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
+  /**
+   * Insert or convert the current textarea line into a bullet.
+   * @param {HTMLTextAreaElement} textarea
+   */
+  function insertBulletLine(textarea) {
+    const value = textarea.value;
+    const start = textarea.selectionStart ?? value.length;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const lineEndIdx = value.indexOf('\n', start);
+    const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
+    const line = value.slice(lineStart, lineEnd);
+    const parsed = parseBulletLine(line);
+    if (parsed) {
+      const addition = `\n${BULLET_PREFIX}`;
+      const next = value.slice(0, lineEnd) + addition + value.slice(lineEnd);
+      textarea.value = next;
+      const caret = lineEnd + addition.length;
+      textarea.setSelectionRange(caret, caret);
+    } else if (!line.trim()) {
+      const next = `${value.slice(0, lineStart)}${BULLET_PREFIX}${value.slice(lineEnd)}`;
+      textarea.value = next;
+      const caret = lineStart + BULLET_PREFIX.length;
+      textarea.setSelectionRange(caret, caret);
+    } else {
+      const check = parseCheckLine(line);
+      const text = check ? check.text : line;
+      const next = `${value.slice(0, lineStart)}${BULLET_PREFIX}${text}${value.slice(lineEnd)}`;
+      textarea.value = next;
+      const caret = lineStart + BULLET_PREFIX.length + text.length;
+      textarea.setSelectionRange(caret, caret);
+    }
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.focus();
+  }
+
+  /**
+   * Continue bullets on Enter; blank item exits bullet mode.
+   * @param {KeyboardEvent} e
+   * @param {HTMLTextAreaElement} textarea
+   */
+  function handleBulletKeydown(e, textarea) {
+    if (e.defaultPrevented) return;
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    const value = textarea.value;
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? start;
+    if (start !== end) return;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const lineEndIdx = value.indexOf('\n', start);
+    const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
+    const line = value.slice(lineStart, lineEnd);
+    const parsed = parseBulletLine(line);
+    if (!parsed) return;
+    e.preventDefault();
+    const itemText = parsed.text.trim();
+    if (!itemText && start === lineEnd) {
+      const dropEnd = lineEnd < value.length && value[lineEnd] === '\n' ? lineEnd + 1 : lineEnd;
+      const next = value.slice(0, lineStart) + value.slice(dropEnd);
+      textarea.value = next;
+      textarea.setSelectionRange(lineStart, lineStart);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    const insertion = `\n${BULLET_PREFIX}`;
+    const next = value.slice(0, start) + insertion + value.slice(end);
+    textarea.value = next;
+    const caret = start + insertion.length;
+    textarea.setSelectionRange(caret, caret);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   const composeActions = document.createElement('div');
   composeActions.className = 'keep-notes__compose-actions';
   composeActions.hidden = true;
@@ -191,6 +296,13 @@ export function mountKeepNotes(root) {
   composeCheckBtn.title = 'Add checklist item';
   composeCheckBtn.setAttribute('aria-label', 'Add checklist item');
   composeCheckBtn.innerHTML = CHECKLIST_ICON;
+
+  const composeBulletBtn = document.createElement('button');
+  composeBulletBtn.type = 'button';
+  composeBulletBtn.className = 'keep-notes__btn keep-notes__btn--icon';
+  composeBulletBtn.title = 'Add bullet';
+  composeBulletBtn.setAttribute('aria-label', 'Add bullet');
+  composeBulletBtn.innerHTML = BULLETS_ICON;
 
   const composeImageInput = document.createElement('input');
   composeImageInput.type = 'file';
@@ -224,6 +336,7 @@ export function mountKeepNotes(root) {
   composeActions.append(
     composePinBtn,
     composeCheckBtn,
+    composeBulletBtn,
     composeImageBtn,
     composeVoiceBtn,
     composeClose,
@@ -692,8 +805,8 @@ export function mountKeepNotes(root) {
   function fillCardBody(bodyEl, note) {
     const body = String(note.body || '');
     bodyEl.replaceChildren();
-    bodyEl.classList.toggle('keep-notes__card-body--checklist', bodyHasChecklist(body));
-    if (!bodyHasChecklist(body)) {
+    bodyEl.classList.toggle('keep-notes__card-body--checklist', bodyHasList(body));
+    if (!bodyHasList(body)) {
       fillLinkifiedText(bodyEl, body.trim());
       return;
     }
@@ -701,6 +814,7 @@ export function mountKeepNotes(root) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const parsed = parseCheckLine(line);
+      const bullet = parseBulletLine(line);
       if (parsed) {
         const row = document.createElement('label');
         row.className = 'keep-notes__check-item';
@@ -723,6 +837,18 @@ export function mountKeepNotes(root) {
         fillLinkifiedText(text, parsed.text || ' ');
 
         row.append(cb, text);
+        bodyEl.append(row);
+      } else if (bullet) {
+        const row = document.createElement('div');
+        row.className = 'keep-notes__bullet-item';
+        const mark = document.createElement('span');
+        mark.className = 'keep-notes__bullet-mark';
+        mark.textContent = BULLET_MARK;
+        mark.setAttribute('aria-hidden', 'true');
+        const text = document.createElement('span');
+        text.className = 'keep-notes__bullet-text';
+        fillLinkifiedText(text, bullet.text || ' ');
+        row.append(mark, text);
         bodyEl.append(row);
       } else if (line.length) {
         const plain = document.createElement('div');
@@ -1218,7 +1344,10 @@ export function mountKeepNotes(root) {
       if (document.activeElement !== composeBody) composeBody.focus();
     });
   });
-  composeBody.addEventListener('keydown', (e) => handleChecklistKeydown(e, composeBody));
+  composeBody.addEventListener('keydown', (e) => {
+    handleChecklistKeydown(e, composeBody);
+    handleBulletKeydown(e, composeBody);
+  });
   composeTitle.addEventListener('focus', () => expandCompose(true));
   composeClose.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1239,6 +1368,12 @@ export function mountKeepNotes(root) {
     e.stopPropagation();
     expandCompose(true);
     insertChecklistLine(composeBody);
+  });
+
+  composeBulletBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    expandCompose(true);
+    insertBulletLine(composeBody);
   });
 
   composeImageBtn.addEventListener('click', (e) => {
@@ -1422,6 +1557,13 @@ export function mountKeepNotes(root) {
   checkEditorBtn.setAttribute('aria-label', 'Add checklist item');
   checkEditorBtn.innerHTML = CHECKLIST_ICON;
 
+  const bulletEditorBtn = document.createElement('button');
+  bulletEditorBtn.type = 'button';
+  bulletEditorBtn.className = 'keep-notes__btn keep-notes__btn--icon';
+  bulletEditorBtn.title = 'Add bullet';
+  bulletEditorBtn.setAttribute('aria-label', 'Add bullet');
+  bulletEditorBtn.innerHTML = BULLETS_ICON;
+
   const imageInput = document.createElement('input');
   imageInput.type = 'file';
   imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif';
@@ -1466,6 +1608,7 @@ export function mountKeepNotes(root) {
   editorToolbar.append(
     pinEditorBtn,
     checkEditorBtn,
+    bulletEditorBtn,
     imageBtn,
     voiceBtn,
     sendEditorBtn,
@@ -1478,10 +1621,17 @@ export function mountKeepNotes(root) {
   document.body.append(imageInput);
 
   editor.addEventListener('click', (e) => e.stopPropagation());
-  editorBody.addEventListener('keydown', (e) => handleChecklistKeydown(e, editorBody));
+  editorBody.addEventListener('keydown', (e) => {
+    handleChecklistKeydown(e, editorBody);
+    handleBulletKeydown(e, editorBody);
+  });
   checkEditorBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     insertChecklistLine(editorBody);
+  });
+  bulletEditorBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    insertBulletLine(editorBody);
   });
 
   /**
