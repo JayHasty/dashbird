@@ -1000,6 +1000,7 @@ export function mountTasks(root, config = {}) {
     const waiting = createWaitingOnControl({
       taskId,
       waitingOn: taskMeta?.waitingOn === true,
+      waitingNotes: taskMeta?.waitingNotes || '',
       wrapClass: 'tasks-panel__waiting tasks-panel__move-waiting-control',
       checkClass: 'tasks-panel__waiting-check',
       onMetaChange: (meta) => {

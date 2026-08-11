@@ -113,18 +113,9 @@ export function mountCalendarUpcoming(root, config, opts = {}) {
   openBtn.className = 'cal-upcoming__open';
   openBtn.textContent = 'Go to calendar';
   openBtn.setAttribute('aria-label', 'Go to calendar');
-  openBtn.title = 'Jump to the Calendar panel below';
+  openBtn.title = 'Open Google Calendar';
 
   openBtn.addEventListener('click', () => {
-    const panel =
-      document.getElementById('h-calendar')?.closest('.panel--calendar')
-      || document.querySelector('.panel--calendar');
-    if (panel && panel.offsetParent !== null) {
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      panel.classList.add('panel--calendar--focus');
-      window.setTimeout(() => panel.classList.remove('panel--calendar--focus'), 1500);
-      return;
-    }
     const authuser = String(config.googleCalendarAuthuser || '').trim();
     const url =
       authuser.includes('@')

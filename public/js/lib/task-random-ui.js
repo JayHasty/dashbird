@@ -614,6 +614,7 @@ async function renderTaskCardModal(opts) {
   const waiting = createWaitingOnControl({
     taskId: String(data.task.id),
     waitingOn: taskMeta?.waitingOn === true,
+    waitingNotes: taskMeta?.waitingNotes || '',
     wrapClass: 'tasks-panel__waiting tasks-random__waiting-control',
     checkClass: 'tasks-panel__waiting-check',
     onMetaChange: (fullMeta) => {
@@ -986,10 +987,11 @@ export async function openProjectLocationsTable(opts) {
 }
 
 /**
- * "Waiting on" checkbox (task detail popup).
+ * "Waiting on" checkbox (task detail popup) with optional note for what it's blocked on.
  * @param {{
  *   taskId: string,
  *   waitingOn?: boolean,
+ *   waitingNotes?: string,
  *   wrapClass?: string,
  *   checkClass?: string,
  *   onMetaChange?: (meta: object) => void,
@@ -999,15 +1001,19 @@ export function createWaitingOnControl(opts) {
   const {
     taskId,
     waitingOn = false,
+    waitingNotes = '',
     wrapClass = 'tasks-panel__waiting',
     checkClass = 'tasks-panel__waiting-check',
     onMetaChange,
   } = opts;
 
-  const wrap = document.createElement('label');
+  const wrap = document.createElement('div');
   wrap.className = wrapClass;
   wrap.classList.toggle('is-waiting-on', !!waitingOn);
   wrap.title = 'Mark as waiting on something';
+
+  const toggle = document.createElement('label');
+  toggle.className = 'tasks-waiting-toggle';
 
   const cb = document.createElement('input');
   cb.type = 'checkbox';
@@ -1019,29 +1025,85 @@ export function createWaitingOnControl(opts) {
   text.className = 'tasks-waiting-label';
   text.textContent = 'Waiting on';
 
-  wrap.append(cb, text);
+  toggle.append(cb, text);
+
+  const notes = document.createElement('input');
+  notes.type = 'text';
+  notes.className = 'tasks-waiting__detail-notes';
+  notes.placeholder = 'What are you waiting on?';
+  notes.maxLength = 400;
+  notes.value = waitingNotes || '';
+  notes.hidden = !waitingOn;
+  notes.setAttribute('aria-label', 'What are you waiting on?');
+
+  wrap.append(toggle, notes);
 
   wrap.addEventListener('click', (e) => {
     e.stopPropagation();
   });
 
-  cb.addEventListener('change', () => {
-    const next = cb.checked;
-    cb.disabled = true;
-    void patchTaskRandomMeta(taskId, { waitingOn: next })
+  function setWaitingUi(on) {
+    wrap.classList.toggle('is-waiting-on', on);
+    notes.hidden = !on;
+  }
+
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let notesSaveTimer = null;
+
+  function saveNotes() {
+    void patchTaskRandomMeta(taskId, { waitingNotes: notes.value })
       .then((meta) => {
-        wrap.classList.toggle('is-waiting-on', next);
         onMetaChange?.(meta);
       })
       .catch(() => {
+        /* keep typed text; retry on next edit */
+      });
+  }
+
+  notes.addEventListener('input', () => {
+    if (notesSaveTimer) clearTimeout(notesSaveTimer);
+    notesSaveTimer = setTimeout(saveNotes, 400);
+  });
+
+  notes.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      notes.blur();
+    }
+  });
+
+  notes.addEventListener('blur', () => {
+    if (notesSaveTimer) {
+      clearTimeout(notesSaveTimer);
+      notesSaveTimer = null;
+      saveNotes();
+    }
+  });
+
+  cb.addEventListener('change', () => {
+    const next = cb.checked;
+    cb.disabled = true;
+    setWaitingUi(next);
+    void patchTaskRandomMeta(taskId, { waitingOn: next })
+      .then((meta) => {
+        onMetaChange?.(meta);
+        if (next) {
+          queueMicrotask(() => {
+            notes.focus();
+            notes.select();
+          });
+        }
+      })
+      .catch(() => {
         cb.checked = !next;
+        setWaitingUi(!next);
       })
       .finally(() => {
         cb.disabled = false;
       });
   });
 
-  return { wrap, checkbox: cb };
+  return { wrap, checkbox: cb, notes };
 }
 
 /**

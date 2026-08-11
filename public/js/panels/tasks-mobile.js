@@ -868,6 +868,7 @@ export function mountTasksMobile(root, config = {}) {
     const waiting = createWaitingOnControl({
       taskId,
       waitingOn: taskMeta?.waitingOn === true,
+      waitingNotes: taskMeta?.waitingNotes || '',
       wrapClass: 'mobile-tasks__waiting mobile-tasks__move-waiting-control',
       checkClass: 'mobile-tasks__waiting-check',
       onMetaChange: (meta) => {

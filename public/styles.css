@@ -6949,6 +6949,12 @@ html.dashbird-view-mobile .page-view--mobile:not([hidden]) {
   overflow: hidden;
 }
 
+/* Author `display: flex` above otherwise beats the UA `[hidden]` rule, so Notes
+   leaked above Contacts/Tasks/Mail/Events/Groups after mountKeepNotes ran. */
+.mobile-shell__pane.keep-notes[hidden] {
+  display: none !important;
+}
+
 .mobile-shell__pane.keep-notes > .keep-notes__shell,
 .mobile-shell__pane .keep-notes__shell {
   flex: 1 1 auto;
@@ -16267,7 +16273,7 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   display: grid;
   grid-template-columns: minmax(9.5rem, 13rem) minmax(0, 1fr);
   gap: 0.75rem;
-  align-items: start;
+  align-items: stretch;
   flex: 0 1 auto;
   min-height: auto;
 }
@@ -16418,9 +16424,16 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 }
 
 .tasks-panel__detail-foot {
-  margin-top: 0.85rem;
-  padding-top: 0.65rem;
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 0.85rem;
+  padding-bottom: 0.1rem;
   border-top: 1px solid rgba(120, 150, 200, 0.14);
+  /* Stay visible while the task list scrolls (page or in-list). */
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: rgba(12, 19, 30, 0.94);
 }
 
 .tasks-panel__archived-btn {
@@ -16651,9 +16664,12 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.32rem;
-  flex: 0 0 auto;
-  min-height: auto;
-  overflow: visible;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(28rem, 50vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tasks-panel__item {
@@ -16717,7 +16733,8 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 .tasks-panel__waiting,
 .mobile-tasks__waiting {
   display: inline-flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.28rem;
   flex: 0 0 auto;
   align-self: center;
@@ -16734,11 +16751,21 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   user-select: none;
 }
 
+.tasks-waiting-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .tasks-panel__waiting.is-waiting-on,
 .mobile-tasks__waiting.is-waiting-on {
   color: var(--accent-2, #a8c8ff);
   border-color: rgba(120, 170, 255, 0.45);
   background: rgba(60, 100, 180, 0.2);
+  white-space: normal;
 }
 
 .tasks-panel__waiting-check,
@@ -16750,6 +16777,35 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 
 .tasks-waiting-label {
   pointer-events: none;
+}
+
+.tasks-waiting__detail-notes {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.35rem 0.45rem;
+  font: inherit;
+  font-size: 0.95em;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text, #e8ecf4);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(120, 150, 200, 0.35);
+  border-radius: 6px;
+  cursor: text;
+  white-space: normal;
+}
+
+.tasks-waiting__detail-notes:focus {
+  outline: none;
+  border-color: rgba(120, 170, 255, 0.65);
+}
+
+.tasks-waiting__detail-notes::placeholder {
+  color: var(--muted, #9aa3b2);
+  opacity: 0.9;
+  font-weight: 400;
 }
 
 .tasks-panel__schedule,
@@ -16932,14 +16988,14 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 
 .tasks-panel__move-waiting {
   display: flex;
-  align-items: center;
+  align-items: stretch;
 }
 
 .tasks-panel__move-waiting-control,
 .mobile-tasks__move-waiting-control {
   width: 100%;
   box-sizing: border-box;
-  justify-content: flex-start;
+  align-items: stretch;
   gap: 0.45rem;
   padding: 0.55rem 0.7rem;
   font-size: 0.9em;
@@ -16958,6 +17014,13 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   background: rgba(60, 100, 180, 0.22);
 }
 
+.tasks-panel__move-waiting-control .tasks-waiting__detail-notes,
+.mobile-tasks__move-waiting-control .tasks-waiting__detail-notes {
+  font-size: 0.92em;
+  font-weight: 500;
+  padding: 0.45rem 0.55rem;
+}
+
 .mobile-tasks__move-schedule {
   display: flex;
   align-items: center;
@@ -16966,7 +17029,7 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 
 .mobile-tasks__move-waiting {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   margin-top: 0.45rem;
 }
 
@@ -20064,7 +20127,7 @@ body.dev-request-mobile-open {
 .tasks-random__schedule-slot,
 .tasks-random__waiting {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   width: 100%;
 }
 
@@ -20090,7 +20153,7 @@ body.dev-request-mobile-open {
 .tasks-random__waiting-control {
   width: 100%;
   box-sizing: border-box;
-  justify-content: flex-start;
+  align-items: stretch;
   gap: 0.45rem;
   padding: 0.55rem 0.7rem;
   font-size: 0.9em;
@@ -20106,6 +20169,12 @@ body.dev-request-mobile-open {
   color: var(--accent-2, #a8c8ff);
   border-color: rgba(120, 170, 255, 0.55);
   background: rgba(60, 100, 180, 0.22);
+}
+
+.tasks-random__waiting-control .tasks-waiting__detail-notes {
+  font-size: 0.92em;
+  font-weight: 500;
+  padding: 0.45rem 0.55rem;
 }
 
 .tasks-random__actions {
