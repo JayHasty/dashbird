@@ -42,6 +42,37 @@ Closed targets show a **solid grey crystal**.
 
 Board: `https://api.ashbyhq.com/posting-api/job-board/openai` (`type: ashby`, `includeCompensation=true`).
 
+### UNOPS (manual shortlist)
+
+Curated home-based retainers that cleared a recruiter-brief scan (`docs/un-job-fit-shortlist.md`). Source `type: manual` — jobs live in `job-watch-targets.json`, not a live board poll.
+
+| Priority | Target |
+|----------|--------|
+| 2 | GPA Policy Advisor — energy in displacement |
+| Watch | Climate Finance Senior Advisor (retainer) |
+
+### Scale AI / Breakthrough Energy / Elemental / GEAPP (Greenhouse)
+
+| Priority | Target |
+|----------|--------|
+| 2 | Scale — AI Advisory Principal |
+| Watch | Scale — public sector deployment / engagement |
+| 2 | Breakthrough Energy — GRIDS / grid & energy |
+| 2 | Elemental Impact — climate programs (not fundraising) |
+| 2 | GEAPP — grids / energy access (not fundraising) |
+
+### World Bank / IMF / Gates / Rockefeller / IRENA (careers links; no public job API)
+
+Named lanes stay grey until a posting is pasted into the manual source. Org cheat-sheet: `docs/mission-orgs.md`.
+
+| Priority | Target |
+|----------|--------|
+| 2 | World Bank — Energy / ESMAP (GG–GH, DC) |
+| Watch | IMF — climate/energy policy (not econ bench) |
+| 2 | Gates — ag / energy / WASH / public-interest AI |
+| 2 | Rockefeller — Power / GEAPP (Director, not SVP) |
+| Watch | IRENA — renewables programme (not junior P-1 / Bonn-only) |
+
 ---
 
 ## Row contents
@@ -53,6 +84,8 @@ Every row shows priority tier, posted / not posted, and opportunity **type**. Op
 |-------|--------|
 | Type | Title/body keywords → `Full-time`, `Contract`, `Fellowship`, `Internship`, `Residency`, `Grant`, `Fixed-term`, `Part-time`. Closed rows fall back to the target's `kind` in the config. |
 | Amount | Parsed from the posting body (`Annual Salary: $215,000 — $300,000 USD`), shown compact as `$215K–$300K`. Hourly pay renders as `$85/hr`. |
+
+**Pay floor:** **$180,000/year** (`compFloorAnnualUsd` in the targets file). If a USD posting’s published max (hourly × 2080 if needed) is below that, `assessJob` returns `pass` — the row can still show as a watched target, but it is not apply-now and will not yellow-dot. Unknown / non-USD pay is not auto-failed.
 
 Greenhouse publishes no structured pay field and its `content` is **double** HTML-escaped, so
 `job-watch-detail.js` unescapes twice before stripping tags. About 355 of 398 Anthropic postings

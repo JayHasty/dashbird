@@ -1,6 +1,6 @@
-/** localStorage helpers for the floating daily scratch sticky. */
+/** localStorage helpers for floating daily scratch stickies. */
 
-export const DAILY_SCRATCH_STORAGE_KEY = 'dashbird-daily-scratch-v1';
+export const DAILY_SCRATCH_STORAGE_PREFIX = 'dashbird-daily-scratch-v1:';
 
 /**
  * @typedef {{ content: string, day: string, x: number, y: number, collapsed: boolean }} DailyScratchState
@@ -16,14 +16,23 @@ export function todayKey() {
 }
 
 /**
+ * @param {string} variantId
+ * @returns {string}
+ */
+export function dailyScratchStorageKey(variantId) {
+  return `${DAILY_SCRATCH_STORAGE_PREFIX}${variantId}`;
+}
+
+/**
+ * @param {string} variantId
  * @param {() => Pick<DailyScratchState, 'x' | 'y'>} defaultPosition
  * @param {(x: number, y: number) => Pick<DailyScratchState, 'x' | 'y'>} clampPosition
  * @returns {DailyScratchState}
  */
-export function loadDailyScratch(defaultPosition, clampPosition) {
+export function loadDailyScratch(variantId, defaultPosition, clampPosition) {
   const day = todayKey();
   try {
-    const raw = localStorage.getItem(DAILY_SCRATCH_STORAGE_KEY);
+    const raw = localStorage.getItem(dailyScratchStorageKey(variantId));
     if (raw) {
       const parsed = JSON.parse(raw);
       const pos = clampPosition(
@@ -45,12 +54,13 @@ export function loadDailyScratch(defaultPosition, clampPosition) {
 }
 
 /**
+ * @param {string} variantId
  * @param {DailyScratchState} state
  */
-export function saveDailyScratch(state) {
+export function saveDailyScratch(variantId, state) {
   try {
     localStorage.setItem(
-      DAILY_SCRATCH_STORAGE_KEY,
+      dailyScratchStorageKey(variantId),
       JSON.stringify({ ...state, day: todayKey() }),
     );
   } catch {

@@ -5799,9 +5799,18 @@ html.sky-sidebar-hidden .sky-sidebar-toggle {
   gap: 0.2rem;
 }
 
-.sentiment-dial__head {
-  display: block;
+.sentiment-dial__head-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
   margin: 0 0 0.15rem;
+  padding: 0 0.15rem;
+}
+
+.sentiment-dial__head {
+  display: inline-block;
+  margin: 0;
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -18824,39 +18833,39 @@ body.dashbird-check-busy * {
   width: 280px;
 }
 
-/* Daily scratch sticky — teal/blue-green twin of the brown DEV NOTES chrome */
-.dev-sticky-note--scratch {
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 0 1px #1a4a44;
+/* Daily scratch sticky — green theme */
+.dev-sticky-note--scratch-green {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 0 1px #2a5a38;
 }
 
-.dev-sticky-note--scratch .dev-sticky-note__header {
-  background: #0f2a2a;
-  border-bottom-color: #1a4a44;
+.dev-sticky-note--scratch-green .dev-sticky-note__header {
+  background: #14281c;
+  border-bottom-color: #2a5a38;
 }
 
-.dev-sticky-note--scratch .dev-sticky-note__title {
-  color: #5ec4b0;
+.dev-sticky-note--scratch-green .dev-sticky-note__title {
+  color: #6fd98a;
 }
 
-.dev-sticky-note--scratch .dev-sticky-note__collapse {
-  color: #4a8a80;
+.dev-sticky-note--scratch-green .dev-sticky-note__collapse {
+  color: #4a9a62;
 }
 
-.dev-sticky-note--scratch .dev-sticky-note__collapse:hover {
-  color: #5ec4b0;
+.dev-sticky-note--scratch-green .dev-sticky-note__collapse:hover {
+  color: #6fd98a;
 }
 
-.dev-sticky-note--scratch .dev-sticky-note__body,
-.dev-sticky-note--scratch .dev-sticky-note__textarea {
-  background: #0d2220;
+.dev-sticky-note--scratch-green .dev-sticky-note__body,
+.dev-sticky-note--scratch-green .dev-sticky-note__textarea {
+  background: #101f16;
 }
 
-.dev-sticky-note--scratch .dev-sticky-note__textarea {
-  color: #b8dcd4;
+.dev-sticky-note--scratch-green .dev-sticky-note__textarea {
+  color: #c4e8cf;
 }
 
-.dev-sticky-note--scratch .dev-sticky-note__textarea::placeholder {
-  color: #3d6b64;
+.dev-sticky-note--scratch-green .dev-sticky-note__textarea::placeholder {
+  color: #3d6b4a;
 }
 
 .dev-sticky-note__hint {

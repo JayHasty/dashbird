@@ -6,9 +6,14 @@
  * 2. Exact watch-target match (Priority-1/2 / watch / queued)
  * 3. Candidate-interest patterns (BD / nonprofit / agri / mobility adjacency)
  * 4. Location signal (SF / NYC / Bay preferred; remote/other noted)
- * 5. Score → verdict: burn | maybe | pass | canary
- * 6. Persist prose recommendation for the yellow-dot popup
+ * 5. Pay floor ($180k/year USD posted max) → pass if clearly below
+ * 6. Score → verdict: burn | maybe | pass | canary
+ * 7. Persist prose recommendation for the yellow-dot popup
  */
+
+/** Posted-max cash floor from the recruiter job-fit brief. */
+export const DEFAULT_COMP_FLOOR_ANNUAL_USD = 180_000;
+const HOURS_PER_YEAR = 2080;
 
 /**
  * @param {string | RegExp | Array<string>} patterns
@@ -65,6 +70,40 @@ export function scoreToStars(score) {
 }
 
 /**
+ * Highest published annual cash in USD, or null if unknown / non-USD.
+ * Hourly bands annualize at 2080 hours.
+ * @param {object | null | undefined} compensation
+ * @returns {number | null}
+ */
+export function annualCashCeilingUsd(compensation) {
+  if (!compensation) return null;
+  const display = String(compensation.display || '');
+  if (/[£€]/.test(display) && !/\$/.test(display)) return null;
+  const max = Number(compensation.max ?? compensation.min);
+  if (!Number.isFinite(max) || max <= 0) return null;
+  if (compensation.period === 'hour') return max * HOURS_PER_YEAR;
+  return max;
+}
+
+/**
+ * @param {object | null | undefined} compensation
+ * @param {object} [config]
+ * @returns {{ below: boolean, floor: number, ceiling: number | null, display: string }}
+ */
+export function payFloorCheck(compensation, config = {}) {
+  const floor = Number(config.compFloorAnnualUsd);
+  const usdFloor = Number.isFinite(floor) && floor > 0 ? floor : DEFAULT_COMP_FLOOR_ANNUAL_USD;
+  const ceiling = annualCashCeilingUsd(compensation);
+  const display = String(compensation?.display || (ceiling != null ? `$${Math.round(ceiling)}` : 'unposted'));
+  return {
+    below: ceiling != null && ceiling < usdFloor,
+    floor: usdFloor,
+    ceiling,
+    display,
+  };
+}
+
+/**
  * Expected-fit stars for a watched lane that is not currently posted.
  * @param {unknown} priority
  * @returns {number}
@@ -118,6 +157,24 @@ export function assessJob(job, config) {
   const matchedTargets = findMatchingTargets(job, config);
   const matchedTargetIds = matchedTargets.map((t) => t.id);
   const loc = locationSignal(location);
+  const pay = payFloorCheck(job?.compensation, config);
+
+  if (pay.below) {
+    const floorLabel = `$${Math.round(pay.floor / 1000)}k/year`;
+    reasons.push(`Posted max ${pay.display} is below the ${floorLabel} floor`);
+    return {
+      verdict: 'pass',
+      score: 1,
+      closeFit: 'none',
+      matchedTargetIds,
+      reasons,
+      recommendation:
+        `${title} publishes pay topping out at ${pay.display}, below the ${floorLabel} floor. `
+        + 'Pass unless Jay explicitly overrides. '
+        + loc.note,
+      applyNow: false,
+    };
+  }
 
   // Class E canaries — leadership seats that signal IC wave but are not apply-now
   const isCanary =

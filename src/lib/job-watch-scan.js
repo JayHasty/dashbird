@@ -103,6 +103,31 @@ export async function runJobWatchScan(env = process.env, opts = {}) {
     }
   }
 
+  /**
+   * @param {object} job
+   * @param {Record<string, object>} [details]
+   */
+  function jobForAssess(job, details = {}) {
+    const fromDetail = details[String(job.id)]?.compensation;
+    return fromDetail ? { ...job, compensation: fromDetail } : job;
+  }
+
+  /** @param {object} job @param {ReturnType<typeof assessJob>} assessment */
+  function matchRecord(job, assessment) {
+    return {
+      id: job.id,
+      title: job.title,
+      location: job.location,
+      url: job.url,
+      updatedAt: job.updatedAt,
+      sourceId: job.sourceId,
+      sourceLabel: job.sourceLabel,
+      assessment,
+      matchStars: scoreToStars(assessment.score),
+      matchScore: assessment.score,
+    };
+  }
+
   // Target matches (scoped by source via jobMatchesTarget)
   /** @type {Record<string, object | null>} */
   const targetMatches = {};
@@ -112,19 +137,7 @@ export async function runJobWatchScan(env = process.env, opts = {}) {
       targetMatches[target.id] = null;
       continue;
     }
-    const assessment = assessJob(hit, config);
-    targetMatches[target.id] = {
-      id: hit.id,
-      title: hit.title,
-      location: hit.location,
-      url: hit.url,
-      updatedAt: hit.updatedAt,
-      sourceId: hit.sourceId,
-      sourceLabel: hit.sourceLabel,
-      assessment,
-      matchStars: scoreToStars(assessment.score),
-      matchScore: assessment.score,
-    };
+    targetMatches[target.id] = matchRecord(hit, assessJob(jobForAssess(hit), config));
   }
 
   // Yellow-dot candidates only from sources that opted in (Anthropic board).
@@ -138,7 +151,7 @@ export async function runJobWatchScan(env = process.env, opts = {}) {
     if (!candidateSources.has(job.sourceId || 'anthropic')) continue;
 
     const matched = findMatchingTargets(job, config);
-    const assessment = assessJob(job, config);
+    const assessment = assessJob(jobForAssess(job), config);
     const isNew =
       !known.has(job.id) && !baseliningSources.has(job.sourceId || 'anthropic');
     const shouldConsider = isYellowCandidate(assessment, matched.map((t) => t.id));
@@ -226,6 +239,23 @@ export async function runJobWatchScan(env = process.env, opts = {}) {
     }
   }
   state.details = details;
+
+  // Greenhouse/Google pay lands on the detail fetch — re-score so the $180k floor applies.
+  for (const [tid, match] of Object.entries(targetMatches)) {
+    if (!match) continue;
+    const job = byId.get(String(match.id));
+    if (!job) continue;
+    const assessment = assessJob(jobForAssess(job, details), config);
+    targetMatches[tid] = matchRecord(job, assessment);
+  }
+  for (const c of candMap.values()) {
+    const job = byId.get(String(c.id));
+    if (!job) continue;
+    const assessment = assessJob(jobForAssess(job, details), config);
+    c.assessment = assessment;
+    c.matchStars = scoreToStars(assessment.score);
+    c.matchScore = assessment.score;
+  }
 
   state.lastScanAt = now;
   state.lastScanError = sourceErrors.length ? sourceErrors.join('; ') : null;

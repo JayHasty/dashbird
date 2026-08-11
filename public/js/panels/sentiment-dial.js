@@ -3,6 +3,8 @@ import { createIndicatorDial } from '../lib/indicator-dial.js';
 
 const REFRESH_MS = 90 * 1000;
 const FNG_PAGE = 'https://www.cnn.com/markets/fear-and-greed';
+/** Google Finance AI research chatbot (Home + Research). */
+const FINANCE_CHAT_PAGE = 'https://www.google.com/finance/beta/';
 
 /**
  * Fear & Greed semicircle dial block (used inside Market Watch).
@@ -12,6 +14,9 @@ export function createSentimentDialBlock() {
   const section = document.createElement('div');
   section.className = 'sentiment-dial';
 
+  const headRow = document.createElement('div');
+  headRow.className = 'sentiment-dial__head-row';
+
   const head = document.createElement('a');
   head.className = 'sentiment-dial__head';
   head.href = FNG_PAGE;
@@ -20,6 +25,16 @@ export function createSentimentDialBlock() {
   head.textContent = 'F & G Index';
   head.title = 'CNN Business F & G Index (opens in new tab)';
 
+  const finance = document.createElement('a');
+  finance.className = 'sentiment-dial__head sentiment-dial__finance';
+  finance.href = FINANCE_CHAT_PAGE;
+  finance.target = '_blank';
+  finance.rel = 'noopener noreferrer';
+  finance.textContent = 'Finance';
+  finance.title = 'Google Finance AI chat (opens in new tab)';
+
+  headRow.append(head, finance);
+
   const dialMount = document.createElement('div');
   dialMount.className = 'sentiment-dial__dial-mount';
 
@@ -27,7 +42,7 @@ export function createSentimentDialBlock() {
   status.className = 'sentiment-dial__status';
   status.hidden = true;
 
-  section.append(head, dialMount, status);
+  section.append(headRow, dialMount, status);
 
   const dial = createIndicatorDial(dialMount, { ariaLabel: 'F & G Index dial' });
 

@@ -1,11 +1,12 @@
 /**
  * Floating daily scratch sticky — same chrome as the old DEV NOTES pad,
- * blue/green theme, textarea only (no export / agent features).
+ * green theme, textarea only (no export / agent features).
  */
 import { loadDailyScratch, saveDailyScratch, todayKey } from '../lib/daily-scratch-storage.js';
 
 const NOTE_WIDTH = 240;
 const HEADER_HEIGHT = 28;
+const VARIANT_ID = 'green';
 
 function defaultPosition() {
   return clampPosition(24, 96);
@@ -24,17 +25,6 @@ function clampPosition(x, y) {
   };
 }
 
-function loadSticky() {
-  return loadDailyScratch(defaultPosition, clampPosition);
-}
-
-/**
- * @param {import('../lib/daily-scratch-storage.js').DailyScratchState} state
- */
-function saveSticky(state) {
-  saveDailyScratch(state);
-}
-
 function chevronSvg(collapsed) {
   if (collapsed) {
     return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
@@ -49,14 +39,14 @@ export function mountDailyScratchSticky() {
   if (document.getElementById('dashbird-daily-scratch')) return;
 
   /** @type {import('../lib/daily-scratch-storage.js').DailyScratchState} */
-  let state = loadSticky();
+  let state = loadDailyScratch(VARIANT_ID, defaultPosition, clampPosition);
 
   /** @type {{ pointerId: number, startX: number, startY: number, origX: number, origY: number } | null} */
   let drag = null;
 
   const root = document.createElement('div');
   root.id = 'dashbird-daily-scratch';
-  root.className = 'dev-sticky-note dev-sticky-note--scratch';
+  root.className = 'dev-sticky-note dev-sticky-note--scratch-green';
   root.setAttribute('role', 'complementary');
   root.setAttribute('aria-label', 'Daily scratch');
   document.body.append(root);
@@ -83,13 +73,13 @@ export function mountDailyScratchSticky() {
   const textarea = document.createElement('textarea');
   textarea.className = 'dev-sticky-note__textarea';
   textarea.placeholder = "Today's scratch…";
-  textarea.spellcheck = true;
+  textarea.spellcheck = false;
 
   body.append(textarea);
   root.append(header, body);
 
   function persist() {
-    saveSticky(state);
+    saveDailyScratch(VARIANT_ID, state);
   }
 
   function applyLayout() {
@@ -171,7 +161,7 @@ export function mountDailyScratchSticky() {
   dragHandle.addEventListener('pointerup', endDrag);
   dragHandle.addEventListener('pointercancel', endDrag);
 
-  window.addEventListener('pagehide', () => saveSticky(state));
+  window.addEventListener('pagehide', () => persist());
   window.addEventListener('resize', () => {
     state = { ...state, ...clampPosition(state.x, state.y) };
     persist();

@@ -179,7 +179,7 @@ export function parseLocations(location) {
   if (/\b(reston|arlington|washington,??\s*dc|district of columbia)\b/.test(hay)) {
     areas.push('DC Area');
   }
-  if (/\bremote\b/.test(hay)) areas.push('Remote');
+  if (/\bremote\b/.test(hay) || /\bhome[-\s]?based\b/.test(hay)) areas.push('Remote');
   for (const a of areas) {
     if (!out.some((x) => x.toLowerCase() === a.toLowerCase())) out.push(a);
   }
@@ -211,6 +211,9 @@ export function parseWorkMode(text, opts = {}) {
   const hay = `${body}\n${location}\n${locType}`.toLowerCase();
 
   if (/\b(100\s*%\s*remote|fully remote|remote[-\s]?first|work from anywhere)\b/.test(hay)) {
+    return { mode: 'remote', remotePercent: 100, label: '100% remote' };
+  }
+  if (/\b(home[-\s]?based|home based)\b/.test(hay) && !/\bon[-\s]?site\b/.test(locType)) {
     return { mode: 'remote', remotePercent: 100, label: '100% remote' };
   }
   if (/\bremote\b/.test(location) && !/\bon[-\s]?site\b/.test(locType)) {

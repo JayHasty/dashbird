@@ -197,6 +197,7 @@ async function fetchAshbyJobs(source) {
           .replace(/<[^>]+>/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
+      const compensation = ashbyCompensation(raw?.compensation || null, text);
       return {
         id: `${source.id}:${rawId}`,
         rawId,
@@ -206,6 +207,7 @@ async function fetchAshbyJobs(source) {
         url: String(raw?.jobUrl || raw?.applyUrl || '').trim(),
         location,
         updatedAt: raw?.publishedAt || null,
+        compensation,
         // Ashby embeds the full posting on the board listing — keep fields for detail.
         _ashby: {
           text,
@@ -309,10 +311,63 @@ async function fetchGoogleCareersJobs(source) {
 }
 
 /**
+ * Static postings curated into the targets file (UN System retainers, one-offs).
+ * @param {object} source
+ * @returns {Promise<{ ok: boolean, jobs: Array<object>, error?: string }>}
+ */
+async function fetchManualJobs(source) {
+  const listed = Array.isArray(source?.jobs) ? source.jobs : [];
+  const jobs = listed
+    .map((raw, i) => {
+      const rawId = String(raw?.id || raw?.rawId || `manual-${i + 1}`).trim();
+      const title = String(raw?.title || '').trim();
+      const url = String(raw?.url || '').trim();
+      if (!rawId || !title || !url) return null;
+      return {
+        id: `${source.id}:${rawId}`,
+        rawId,
+        sourceId: source.id,
+        sourceLabel: source.label || source.id,
+        title,
+        url,
+        location: String(raw?.location || '').trim(),
+        updatedAt: raw?.updatedAt || raw?.postedAt || null,
+        opportunityType: raw?.kind || raw?.type || null,
+        workModeHint: raw?.workMode || null,
+        summary: String(raw?.summary || '').trim(),
+      };
+    })
+    .filter(Boolean);
+  return { ok: true, jobs };
+}
+
+/**
+ * @param {object} source
+ * @param {object} job
+ * @returns {Promise<{ type: string, compensation: object | null, locations: string[], workMode: object | null } | null>}
+ */
+async function detailFromManualJob(job) {
+  const text = [job?.title, job?.summary, job?.location].filter(Boolean).join('\n');
+  const locations = parseLocations(job?.location || '');
+  const workMode = parseWorkMode(
+    job?.workModeHint ? String(job.workModeHint) : text,
+    { location: job?.location },
+  );
+  return {
+    type: job?.opportunityType
+      || parseOpportunityType(job?.title || '', text, null),
+    compensation: null,
+    locations,
+    workMode,
+  };
+}
+
+/**
  * @param {object} source
  * @returns {Promise<{ ok: boolean, jobs: Array<object>, error?: string }>}
  */
 export async function fetchSourceJobs(source) {
+  if (source?.type === 'manual') return fetchManualJobs(source);
   if (source?.type === 'google-careers') return fetchGoogleCareersJobs(source);
   if (source?.type === 'ashby') return fetchAshbyJobs(source);
   return fetchGreenhouseJobs(source);
@@ -368,6 +423,7 @@ async function fetchGoogleDetail(job) {
  * @returns {Promise<{ type: string, compensation: object | null } | null>}
  */
 export async function fetchSourceDetail(source, job) {
+  if (source?.type === 'manual') return detailFromManualJob(job);
   if (source?.type === 'google-careers') return fetchGoogleDetail(job);
   if (source?.type === 'ashby') return detailFromAshbyJob(job);
   return fetchOpportunityDetail(source?.boardUrl, job?.rawId);
