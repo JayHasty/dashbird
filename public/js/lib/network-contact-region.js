@@ -43,6 +43,7 @@ const BAY_AREA_CITY_NAMES = Object.freeze([
   'Vallejo',
   'Napa',
   'Bolinas',
+  'Delta',
   'Petaluma',
   'Martinez',
   'Canyon',
@@ -74,7 +75,7 @@ export function isContactInBayArea(location) {
     .trim();
   if (!raw) return false;
   const lower = raw.toLowerCase();
-  if (lower === 'out of town' || lower === 'delta') return false;
+  if (lower === 'out of town') return false;
   if (lower.includes('bay area')) return true;
 
   const n = normalizeCityName(raw);

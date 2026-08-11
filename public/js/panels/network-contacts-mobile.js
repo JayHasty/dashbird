@@ -13,7 +13,10 @@ import {
   contactRegionAttribute,
 } from '../lib/network-contact-region.js';
 import { NETWORK_LABELS } from '../lib/network-labels.js';
-import { collectContactLocationOptions } from '../lib/network-people-filters.js';
+import {
+  collectContactLocationOptions,
+  createDefaultPeopleFilters,
+} from '../lib/network-people-filters.js';
 import {
   pushMobileNav,
   mobileNavBack,
@@ -43,18 +46,6 @@ const SENSITIVITY_OPTIONS = ['Down', 'Situational', 'Proper'];
 let contactHiddenExpanded = false;
 
 const REGION_FILTER_OPTIONS = [CONTACT_REGION_IN_BAY, CONTACT_REGION_OUT];
-
-/** Default mobile people filters on first load (cleared filters = All). */
-const DEFAULT_MOBILE_PEOPLE_FILTERS = {
-  kinds: ['friend', 'organizer'],
-  hasTasks: [],
-  relationships: ['Cultivating', 'Meta', 'Inner Circle', 'Collaborator', 'Family'],
-  statuses: ['Fan', 'Hot', 'Warm'],
-  regions: [CONTACT_REGION_IN_BAY],
-  locations: [],
-  hidePaused: true,
-  hideFormer: true,
-};
 
 const METHOD_LABELS = {
   phone: 'Phone',
@@ -440,7 +431,7 @@ export function mountNetworkContactsMobile(root) {
   const selectedContactIds = new Set();
   let dirty = false;
 
-  let peopleFilters = { ...DEFAULT_MOBILE_PEOPLE_FILTERS };
+  let peopleFilters = createDefaultPeopleFilters();
   let locationOptionsKey = '';
 
   function refreshLocationFilterOptions() {
@@ -466,7 +457,7 @@ export function mountNetworkContactsMobile(root) {
   }
 
   function applyDefaultPeopleFiltersToUi() {
-    peopleFilters = { ...DEFAULT_MOBILE_PEOPLE_FILTERS };
+    peopleFilters = createDefaultPeopleFilters();
     kindFilter.setSelected(peopleFilters.kinds);
     hasTaskFilter.setSelected(peopleFilters.hasTasks);
     relationshipFilter.setSelected(peopleFilters.relationships);

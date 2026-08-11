@@ -19,7 +19,11 @@ import {
   contactRegionAttribute,
 } from '../lib/network-contact-region.js';
 import { NETWORK_LABELS } from '../lib/network-labels.js';
-import { collectContactLocationOptions } from '../lib/network-people-filters.js';
+import {
+  collectContactLocationOptions,
+  createDefaultPeopleFilters,
+  PEOPLE_FILTER_DEFAULTS_VERSION,
+} from '../lib/network-people-filters.js';
 import {
   collectSceneOptions,
   joinSceneTokens,
@@ -486,7 +490,7 @@ export function mountNetworkUi(root) {
     relationshipFilter.wrapEl,
     statusFilter.wrapEl,
     locationFilter.wrapEl,
-    hasTaskFilter.wrapEl,
+    regionFilter.wrapEl,
     manageFilterActions,
     defaultFilters,
   );
@@ -620,16 +624,8 @@ export function mountNetworkUi(root) {
   /** @type {Set<string>} */
   const selectedOrgIds = new Set();
   let query = '';
-  /** @type {{ kinds: string[], hasTasks: string[], relationships: string[], statuses: string[], locations: string[], hidePaused: boolean, hideFormer: boolean }} */
-  let peopleFilters = {
-    kinds: [],
-    hasTasks: [],
-    relationships: [],
-    statuses: [],
-    locations: [],
-    hidePaused: true,
-    hideFormer: true,
-  };
+  /** @type {{ kinds: string[], hasTasks: string[], relationships: string[], statuses: string[], locations: string[], regions: string[], hidePaused: boolean, hideFormer: boolean }} */
+  let peopleFilters = createDefaultPeopleFilters();
 
   function persistWorkbenchState() {
     try {
@@ -640,6 +636,7 @@ export function mountNetworkUi(root) {
           peopleSubTab,
           query: search.value || query || '',
           peopleFilters,
+          filterDefaultsVersion: PEOPLE_FILTER_DEFAULTS_VERSION,
         }),
       );
     } catch {
@@ -653,6 +650,7 @@ export function mountNetworkUi(root) {
    *   peopleSubTab?: 'contacts' | 'manage' | 'groups',
    *   query?: string,
    *   peopleFilters?: Record<string, unknown>,
+   *   filterDefaultsVersion?: number,
    * } | null}
    */
   function readWorkbenchState() {
@@ -897,7 +895,7 @@ export function mountNetworkUi(root) {
     relationshipFilter.wrapEl.hidden = onManage;
     statusFilter.wrapEl.hidden = onManage;
     locationFilter.wrapEl.hidden = onManage;
-    hasTaskFilter.wrapEl.hidden = onManage;
+    regionFilter.wrapEl.hidden = onManage;
     manageFilterActions.hidden = !onManage;
     peopleFilterBar.classList.toggle('network-crm__filters--manage', onManage);
   }
@@ -1214,6 +1212,10 @@ export function mountNetworkUi(root) {
           .toLowerCase();
         const want = new Set(peopleFilters.locations.map((l) => l.toLowerCase()));
         if (!want.has(loc)) return false;
+      }
+      if (peopleFilters.regions?.length) {
+        const region = contactRegionAttribute(c);
+        if (!peopleFilters.regions.includes(region)) return false;
       }
       return true;
     });
@@ -6253,7 +6255,11 @@ export function mountNetworkUi(root) {
       } else {
         peopleSubTab = 'contacts';
       }
-      if (restored?.peopleFilters && typeof restored.peopleFilters === 'object') {
+      if (
+        restored?.peopleFilters
+        && typeof restored.peopleFilters === 'object'
+        && restored.filterDefaultsVersion === PEOPLE_FILTER_DEFAULTS_VERSION
+      ) {
         const pf = restored.peopleFilters;
         peopleFilters = {
           kinds: asFilterList(pf.kinds ?? pf.kind),
@@ -6266,6 +6272,8 @@ export function mountNetworkUi(root) {
           hidePaused: true,
           hideFormer: true,
         };
+      } else {
+        peopleFilters = createDefaultPeopleFilters();
       }
       if (typeof restored?.query === 'string') {
         query = restored.query;
@@ -6332,5 +6340,6 @@ export function mountNetworkUi(root) {
   });
 
   syncTabs();
+  applyWorkbenchFiltersToUi();
   load();
 }

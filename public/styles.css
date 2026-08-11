@@ -8586,6 +8586,15 @@ a.mobile-events__title:hover {
   line-height: 1.35;
 }
 
+.mobile-events__source {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: rgba(150, 165, 190, 0.85);
+}
+
 .mobile-events__actions {
   display: flex;
   flex-wrap: wrap;
@@ -14149,6 +14158,12 @@ button.network-crm__person-name--link:hover {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
   gap: 1rem;
   align-items: stretch;
+  position: relative;
+}
+
+.row--tasks-keep > .panel--tasks {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 @media (max-width: 900px) {
@@ -14160,14 +14175,22 @@ button.network-crm__person-name--link:hover {
 .panel--keep-notes {
   display: flex;
   flex-direction: column;
-  /* Size the row from Tasks; Notes stretches to that height and scrolls. */
-  height: 0;
-  min-height: 100%;
+  min-height: 0;
   overflow: hidden;
+  /* Tasks alone sizes the auto row. Notes is out of flow so it does not
+     contribute content height; inset fills that same grid area. */
+  grid-column: 2;
+  grid-row: 1;
+  position: absolute;
+  inset: 0;
 }
 
 @media (max-width: 900px) {
   .panel--keep-notes {
+    position: static;
+    inset: auto;
+    grid-column: auto;
+    grid-row: auto;
     height: auto;
     min-height: 14rem;
     max-height: min(36rem, 70vh);
@@ -14199,7 +14222,9 @@ button.network-crm__person-name--link:hover {
 }
 
 .panel--keep-notes .keep-notes__shell {
+  flex: 1 1 auto;
   min-height: 0;
+  height: auto;
 }
 
 .keep-notes__shell {
@@ -19448,6 +19473,112 @@ body.dev-request-view-open {
   letter-spacing: 0.04em;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
   cursor: pointer;
+}
+
+.daily-scratch-mobile-fab {
+  position: fixed;
+  right: 14px;
+  bottom: calc(56px + 44px + 10px + env(safe-area-inset-bottom, 0px));
+  z-index: 9998;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(111, 217, 138, 0.45);
+  border-radius: 22px;
+  background: #14281c;
+  color: #6fd98a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.daily-scratch-mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.daily-scratch-mobile-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  max-height: 88vh;
+  overflow: auto;
+  padding: 12px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 14px 14px 0 0;
+  background: #101f16;
+  border-top: 1px solid #2a5a38;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.daily-scratch-mobile-sheet__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.daily-scratch-mobile-sheet__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #6fd98a;
+}
+
+.daily-scratch-mobile-sheet__close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6fd98a;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.daily-scratch-mobile-sheet__hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #4a9a62;
+}
+
+.daily-scratch-mobile-sheet__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.daily-scratch-mobile-sheet .scratch-editor {
+  min-height: 36vh;
+  max-height: 56vh;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 10px 8px 12px;
+}
+
+.daily-scratch-mobile-sheet .dev-sticky-note__scratch-tools {
+  padding: 0 0 8px;
+  gap: 8px;
+}
+
+.daily-scratch-mobile-sheet .dev-sticky-note__tool {
+  width: 40px;
+  height: 40px;
+}
+
+.daily-scratch-mobile-sheet .scratch-line__box {
+  width: 18px;
+  height: 18px;
+  margin-top: 4px;
+}
+
+body.daily-scratch-mobile-open {
+  overflow: hidden;
 }
 
 .dev-request-mobile-backdrop {

@@ -350,6 +350,60 @@ function googleCalendarAddUrl(ev, calTarget) {
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
+const SOURCE_LABELS = {
+  facebook: 'Facebook',
+  gmail: 'Gmail',
+  eventbrite: 'Eventbrite',
+  meetup: 'Meetup',
+  luma: 'Luma',
+  partiful: 'Partiful',
+  secretparty: 'Secret Party',
+  telegram: 'Telegram',
+  multiverse: 'Multiverse',
+  dorkbotsf: 'dorkbotSF',
+  coolstuff: 'Cool Happenings',
+  webpage: 'Web page',
+  public: 'Web',
+};
+
+/**
+ * Human label for the feed/platform an event came from.
+ * Empty when there is no source to show (do not invent one).
+ * @param {object} ev
+ * @returns {string}
+ */
+function eventSourceLabel(ev) {
+  const url = String(ev?.url || '').trim();
+  if (url) {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./i, '');
+      if (host) {
+        if (/facebook\.com$/i.test(host)) return 'Facebook';
+        if (/eventbrite\./i.test(host)) return 'Eventbrite';
+        if (/meetup\.com$/i.test(host)) return 'Meetup';
+        if (/lu\.ma$/i.test(host) || /^luma\./i.test(host)) return 'Luma';
+        if (/partiful\.com$/i.test(host)) return 'Partiful';
+        if (/secretparty\.io$/i.test(host)) return 'Secret Party';
+        if (/themultiverse\.school$/i.test(host)) return 'Multiverse';
+        if (/dorkbotsf\.org$/i.test(host)) return 'dorkbotSF';
+      }
+    } catch {
+      /* ignore bad urls */
+    }
+  }
+
+  const explicit = String(ev?.sourceLabel || '').trim();
+  if (explicit) return explicit;
+
+  const raw = String(ev?.source || ev?.platform || ev?.feed || ev?.origin || '')
+    .trim()
+    .toLowerCase();
+  if (!raw || raw === 'unknown') return '';
+  if (SOURCE_LABELS[raw]) return SOURCE_LABELS[raw];
+  if (raw.startsWith('gmail')) return 'Gmail';
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 /**
  * @param {object} ev
  * @returns {object | null}
@@ -3085,42 +3139,15 @@ export function mountEventsFinderMobile(root) {
     }
     bodyBits.push(actions);
 
-    /** @type {HTMLElement | null} */
-    let notableRow = null;
-    if (!opts.mapPopup && !showSkipped && eventId) {
-      const isNotable = ev.notable === true;
-      if (isNotable) card.classList.add('events-finder__card--notable');
-      notableRow = document.createElement('label');
-      notableRow.className = 'events-finder__card-notable';
-      const notableCb = document.createElement('input');
-      notableCb.type = 'checkbox';
-      notableCb.checked = isNotable;
-      notableCb.addEventListener('click', (e) => e.stopPropagation());
-      notableCb.addEventListener('change', async () => {
-        try {
-          const res = await fetch(`/api/events-finder/notable/${encodeURIComponent(eventId)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(
-              notableCb.checked
-                ? { notable: true, reminderLeadWeeks: 4 }
-                : { notable: false },
-            ),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
-          void loadEvents();
-        } catch (err) {
-          notableCb.checked = !notableCb.checked;
-          window.alert(`Could not update notable: ${String(err?.message || err)}`);
-        }
-      });
-      const notableText = document.createElement('span');
-      notableText.textContent = 'Notable event';
-      notableRow.append(notableCb, notableText);
-      notableRow.addEventListener('click', (e) => e.stopPropagation());
-      bodyBits.push(notableRow);
-    } else if (opts.mapPopup && ev.notable === true) {
+    if (!opts.mapPopup) {
+      const sourceLabel = eventSourceLabel(ev);
+      if (sourceLabel) {
+        const sourceEl = document.createElement('p');
+        sourceEl.className = 'mobile-events__source';
+        sourceEl.textContent = sourceLabel;
+        bodyBits.push(sourceEl);
+      }
+    } else if (ev.notable === true) {
       card.classList.add('events-finder__card--notable');
     }
 

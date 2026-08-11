@@ -332,6 +332,12 @@ async function mainMobile() {
     })
     .catch((e) => console.error('Dev request mobile mount failed:', e));
 
+  void import('./panels/daily-scratch-mobile.js')
+    .then(({ mountDailyScratchMobile }) => {
+      mountDailyScratchMobile();
+    })
+    .catch((e) => console.error('Daily scratch mobile mount failed:', e));
+
   markPriorityReady();
   markDeferredReady();
 }
