@@ -259,7 +259,23 @@ export async function syncProjectLocationsMarkdown(projects, env = process.env) 
   return { meta: await loadTaskRandomMeta(env), markdown: md };
 }
 
+/** Serialize read-modify-write of the shared meta JSON file. */
+let metaLock = Promise.resolve();
+
+function withMetaLock(fn) {
+  const run = metaLock.then(fn, fn);
+  metaLock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 export async function patchTaskMeta(taskId, patch, env = process.env) {
+  return withMetaLock(() => patchTaskMetaUnlocked(taskId, patch, env));
+}
+
+async function patchTaskMetaUnlocked(taskId, patch, env = process.env) {
   const id = String(taskId || '').trim();
   if (!/^\d+$/.test(id)) {
     const err = new Error('invalid_id');
@@ -363,6 +379,10 @@ export async function patchTaskMeta(taskId, patch, env = process.env) {
 }
 
 export async function patchProjectMeta(projectId, patch, projects = [], env = process.env) {
+  return withMetaLock(() => patchProjectMetaUnlocked(projectId, patch, projects, env));
+}
+
+async function patchProjectMetaUnlocked(projectId, patch, projects = [], env = process.env) {
   const id = String(projectId);
   if (!Number.isFinite(projectId) || projectId <= 0) {
     const err = new Error('invalid_id');

@@ -16676,6 +16676,62 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   margin: 0;
 }
 
+.tasks-panel__subtasks {
+  list-style: none;
+  margin: 0.02rem 0 0.12rem;
+  padding: 0 0 0 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+}
+
+.tasks-panel__subtask {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.28rem;
+  font-size: 0.62em;
+  line-height: 1.35;
+  padding: 0.02rem 0.1rem;
+}
+
+.tasks-panel__subtask-arrow {
+  flex: 0 0 auto;
+  opacity: 0.55;
+  margin-top: 0.06rem;
+  line-height: 1.35;
+  user-select: none;
+}
+
+.tasks-panel__subtask-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.38rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.tasks-panel__subtask-check {
+  margin-top: 0.1rem;
+  transform: scale(0.88);
+  transform-origin: top center;
+}
+
+.tasks-panel__subtask-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.tasks-panel__subtask--done .tasks-panel__subtask-text {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.tasks-panel__subtask--pending-hide {
+  opacity: 0.55;
+}
+
 .tasks-panel__item--dragging {
   opacity: 0.45;
 }
@@ -16708,6 +16764,23 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   flex: 1;
   min-width: 0;
   word-break: break-word;
+}
+
+.tasks-waiting-tag {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.45em;
+  padding: 0.12em 0.48em 0.16em;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 170, 255, 0.5);
+  background: rgba(70, 110, 190, 0.32);
+  color: var(--accent-2, #c2d6ff);
+  white-space: nowrap;
+  user-select: none;
 }
 
 .task-schedule,
@@ -16780,7 +16853,7 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 }
 
 .tasks-waiting__detail-notes {
-  display: block;
+  display: none;
   width: 100%;
   box-sizing: border-box;
   margin: 0;
@@ -16795,6 +16868,12 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   border-radius: 6px;
   cursor: text;
   white-space: normal;
+}
+
+.tasks-panel__waiting.is-waiting-on .tasks-waiting__detail-notes,
+.mobile-tasks__waiting.is-waiting-on .tasks-waiting__detail-notes,
+.tasks-random__waiting-control.is-waiting-on .tasks-waiting__detail-notes {
+  display: block;
 }
 
 .tasks-waiting__detail-notes:focus {
@@ -17019,6 +17098,11 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   font-size: 0.92em;
   font-weight: 500;
   padding: 0.45rem 0.55rem;
+}
+
+.tasks-panel__move-waiting-control:not(.is-waiting-on) .tasks-waiting__detail-notes,
+.mobile-tasks__move-waiting-control:not(.is-waiting-on) .tasks-waiting__detail-notes {
+  display: none !important;
 }
 
 .mobile-tasks__move-schedule {
@@ -17702,6 +17786,63 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 .mobile-tasks__task--pending {
   opacity: 0.62;
   transition: opacity 0.35s ease;
+}
+
+.mobile-tasks__subtasks {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0 0 0 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.mobile-tasks__subtask {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.mobile-tasks__subtask-arrow {
+  flex: 0 0 auto;
+  opacity: 0.55;
+  margin-top: 0.12rem;
+  font-size: 0.85em;
+  line-height: 1.35;
+  user-select: none;
+}
+
+.mobile-tasks__subtask-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.mobile-tasks__subtask-check {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.12rem;
+}
+
+.mobile-tasks__subtask-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.82em;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.mobile-tasks__subtask--done .mobile-tasks__subtask-text {
+  text-decoration: line-through;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.mobile-tasks__subtask--pending {
+  opacity: 0.62;
 }
 
 .mobile-tasks--moving .mobile-tasks__detail-pane {
@@ -20175,6 +20316,10 @@ body.dev-request-mobile-open {
   font-size: 0.92em;
   font-weight: 500;
   padding: 0.45rem 0.55rem;
+}
+
+.tasks-random__waiting-control:not(.is-waiting-on) .tasks-waiting__detail-notes {
+  display: none !important;
 }
 
 .tasks-random__actions {

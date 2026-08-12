@@ -5,7 +5,20 @@ const TASK_CREATED_EVENT = 'dashbird:task-created';
 const CONTACT_TASK_DONE_EVENT = 'dashbird:contact-task-done';
 const CONTACT_TASKS_CHANGED_EVENT = 'dashbird:contact-tasks-changed';
 
-export const CONTACT_TASKS_PROJECT_TITLE = 'Contact Tasks';
+export const CONTACT_TASKS_PROJECT_TITLE = 'Friend Tasks';
+export const LEGACY_CONTACT_TASKS_PROJECT_TITLE = 'Contact Tasks';
+
+/**
+ * @param {unknown} title
+ * @returns {boolean}
+ */
+export function isFriendTasksProjectTitle(title) {
+  const t = String(title || '').trim().toLowerCase();
+  return (
+    t === CONTACT_TASKS_PROJECT_TITLE.toLowerCase() ||
+    t === LEGACY_CONTACT_TASKS_PROJECT_TITLE.toLowerCase()
+  );
+}
 
 /**
  * Last-selected Vikunja project from the Tasks panel (desktop + mobile share key).
@@ -62,7 +75,7 @@ export function notifyContactTaskDone(payload) {
 }
 
 /**
- * Contact-card tasks changed — Tasks panel should refresh the Contact Tasks project.
+ * Contact-card tasks changed — Tasks panel should refresh the Friend Tasks project.
  */
 export function notifyContactTasksChanged() {
   document.dispatchEvent(new CustomEvent(CONTACT_TASKS_CHANGED_EVENT));

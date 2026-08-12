@@ -589,6 +589,7 @@ export function normalizeContact(raw) {
   const kinds = mergeKinds(normalizeKinds(raw), kindsFromScene);
   const tasks = normalizeTasks(raw);
   const mergeSuggestions = normalizeMergeSuggestions(raw.mergeSuggestions);
+  const vikunjaParentTaskId = String(raw.vikunjaParentTaskId || raw.vikunja_parent_task_id || '').trim();
   return {
     id,
     displayName,
@@ -621,6 +622,7 @@ export function normalizeContact(raw) {
     sensitivity: cleanEnum(raw.sensitivity, CONTACT_SENSITIVITIES),
     relationshipStatus: normalizeRelationshipStatus(raw),
     tasks,
+    ...( /^\d+$/.test(vikunjaParentTaskId) ? { vikunjaParentTaskId } : {}),
     mergeSuggestions,
     // Derived from open tasks for search / older callers; not a primary edit field.
     nextStep: openTasksSummary(tasks),
@@ -900,6 +902,10 @@ export async function updateContact(id, patch, env = process.env, opts = {}) {
       delete merged.nextStep;
     }
   }
+  const parentVid = String(
+    patch?.vikunjaParentTaskId || patch?.vikunja_parent_task_id || prev.vikunjaParentTaskId || '',
+  ).trim();
+  if (/^\d+$/.test(parentVid)) merged.vikunjaParentTaskId = parentVid;
   if (patch && Object.prototype.hasOwnProperty.call(patch, 'mergeSuggestions')) {
     merged.mergeSuggestions = patch.mergeSuggestions;
   }

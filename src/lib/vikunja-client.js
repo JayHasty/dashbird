@@ -121,12 +121,23 @@ export function resolveVikunjaConfig(env = process.env) {
 
 /**
  * @param {unknown} task
+ * @returns {string[]}
+ */
+function vikunjaParentTaskIds(task) {
+  if (!task || typeof task !== 'object') return [];
+  const parents = task.related_tasks?.parenttask;
+  if (!Array.isArray(parents)) return [];
+  return parents
+    .map((p) => (p && p.id != null ? String(p.id) : ''))
+    .filter(Boolean);
+}
+
+/**
+ * @param {unknown} task
  * @returns {boolean}
  */
 export function vikunjaTaskIsSubtask(task) {
-  if (!task || typeof task !== 'object') return false;
-  const parents = task.related_tasks?.parenttask;
-  return Array.isArray(parents) && parents.length > 0;
+  return vikunjaParentTaskIds(task).length > 0;
 }
 
 /**
@@ -637,8 +648,11 @@ const PANEL_TODOS_MAX_PAGES = 100;
 const ALL_PANEL_TODOS_DEFAULT_CAP = 10_000;
 
 /**
+ * Open tasks for a project. Subtasks are nested under `subtasks` on the parent
+ * and omitted from the top-level list.
  * @param {NodeJS.ProcessEnv} [env]
  * @param {{ projectId?: number | null }} [opts]
+ * @returns {Promise<Array<{ id: string, text: string, done: boolean, projectId: number | null, subtasks: Array<{ id: string, text: string, done: boolean, projectId: number | null }> }>>}
  */
 export async function listPanelTodos(env = process.env, opts = {}) {
   const cfg = resolveVikunjaConfig(env);
@@ -659,8 +673,29 @@ export async function listPanelTodos(env = process.env, opts = {}) {
     throw err;
   }
 
-  /** @type {Array<{ id: string, text: string, done: boolean, projectId: number | null }>} */
+  /** @type {Array<{ id: string, text: string, done: boolean, projectId: number | null, subtasks?: Array<{ id: string, text: string, done: boolean, projectId: number | null }> }>} */
   const all = [];
+  /** @type {Map<string, Array<{ id: string, text: string, done: boolean, projectId: number | null }>>} */
+  const subtasksByParent = new Map();
+
+  /**
+   * @param {string} parentId
+   * @param {{ id: string, text: string, done: boolean, projectId: number | null } | null} sub
+   */
+  const addNestedSubtask = (parentId, sub) => {
+    if (!parentId || !sub || sub.done) return;
+    if (!subtasksByParent.has(parentId)) subtasksByParent.set(parentId, []);
+    const list = subtasksByParent.get(parentId);
+    if (list.some((s) => s.id === sub.id)) return;
+    list.push({
+      id: sub.id,
+      text: sub.text,
+      done: sub.done,
+      projectId: sub.projectId,
+      description: sub.description || '',
+    });
+  };
+
   for (let page = 1; page <= PANEL_TODOS_MAX_PAGES; page++) {
     const qs = new URLSearchParams({
       per_page: String(PANEL_TODOS_PER_PAGE),
@@ -668,6 +703,7 @@ export async function listPanelTodos(env = process.env, opts = {}) {
       sort_by: 'id',
       order_by: 'desc',
       filter: `done = false && project_id = ${projectId}`,
+      expand: 'subtasks',
     });
 
     const res = await vikunjaFetch(`tasks?${qs}`, { env });
@@ -679,6 +715,18 @@ export async function listPanelTodos(env = process.env, opts = {}) {
     }
 
     const rows = Array.isArray(res.json) ? res.json : [];
+    for (const row of rows) {
+      const mapped = mapVikunjaTask(row);
+      if (!mapped) continue;
+      if (vikunjaTaskIsSubtask(row)) {
+        for (const pid of vikunjaParentTaskIds(row)) addNestedSubtask(pid, mapped);
+      }
+      const nested = row.related_tasks?.subtask;
+      if (Array.isArray(nested)) {
+        const parentId = row.id != null ? String(row.id) : '';
+        for (const child of nested) addNestedSubtask(parentId, mapVikunjaTask(child));
+      }
+    }
     // Hide open subtasks from the top-level project list; they live under the parent.
     const mapped = rows
       .filter((row) => !vikunjaTaskIsSubtask(row))
@@ -687,7 +735,11 @@ export async function listPanelTodos(env = process.env, opts = {}) {
     all.push(...mapped);
     if (rows.length < PANEL_TODOS_PER_PAGE) break;
   }
-  return all;
+
+  return all.map((item) => ({
+    ...item,
+    subtasks: subtasksByParent.get(item.id) || [],
+  }));
 }
 
 /**
@@ -796,7 +848,9 @@ export async function listAllPanelTodos(env = process.env, opts = {}) {
     for (const item of items) {
       if (all.length >= cap) break;
       all.push({
-        ...item,
+        id: item.id,
+        text: item.text,
+        done: item.done,
         projectId: proj.id,
         projectTitle: proj.title,
       });
@@ -1286,12 +1340,38 @@ async function linkPanelSubtaskRelation(parentTaskId, childId, env = process.env
 }
 
 /**
+ * Link an existing task as a Vikunja subtask of `parentId`.
+ * @param {string} parentId
+ * @param {string|number} childId
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export async function linkPanelSubtask(parentId, childId, env = process.env) {
+  const parentTaskId = String(parentId || '').trim();
+  const child = Number(childId);
+  if (!/^\d+$/.test(parentTaskId) || !Number.isFinite(child) || child <= 0) {
+    const err = new Error('invalid_id');
+    err.code = 'invalid_id';
+    err.status = 400;
+    throw err;
+  }
+  const relRes = await linkPanelSubtaskRelation(parentTaskId, child, env);
+  if (relRes.ok) return;
+  const msg = String(relRes.json?.message || relRes.text || '').toLowerCase();
+  if (relRes.status === 400 && (msg.includes('already') || msg.includes('exist'))) return;
+  const err = new Error(safeUpstreamMessage(relRes) || 'vikunja_relation_failed');
+  err.code = 'vikunja_upstream';
+  err.status = relRes.status >= 400 && relRes.status < 600 ? relRes.status : 502;
+  throw err;
+}
+
+/**
  * Create a task in the parent's project and link it as a Vikunja subtask.
  * @param {string} parentId
  * @param {string} title
  * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ description?: string }} [opts]
  */
-export async function createPanelSubtask(parentId, title, env = process.env) {
+export async function createPanelSubtask(parentId, title, env = process.env, opts = {}) {
   const { taskId: parentTaskId, raw: parent } = await fetchVikunjaTaskRaw(parentId, env);
   const projectId =
     parent.project_id != null && Number.isFinite(Number(parent.project_id))
@@ -1304,7 +1384,10 @@ export async function createPanelSubtask(parentId, title, env = process.env) {
     throw err;
   }
 
-  const item = await createPanelTodo(title, env, { projectId });
+  const item = await createPanelTodo(title, env, {
+    projectId,
+    description: opts?.description,
+  });
   const childId = Number(item.id);
   if (!Number.isFinite(childId) || childId <= 0) {
     const err = new Error('vikunja_create_failed');

@@ -5,6 +5,7 @@ import {
   openWaitingOnList,
   openRecentlyArchivedTasks,
   createWaitingOnControl,
+  syncWaitingListTag,
 } from '../lib/task-random-ui.js';
 import { fetchTaskRandomMeta } from '../lib/task-location-meta.js';
 import {
@@ -14,7 +15,7 @@ import {
   scheduleTaskToCalendar,
 } from '../lib/task-schedule.js';
 import {
-  CONTACT_TASKS_PROJECT_TITLE,
+  isFriendTasksProjectTitle,
   notifyContactTaskDone,
   onContactTasksChanged,
 } from '../lib/task-bridge.js';
@@ -406,7 +407,7 @@ export function mountTasksMobile(root, config = {}) {
 
   /** @type {Array<{ id: number, title: string, position?: number }>} */
   let projects = [];
-  /** @type {Array<{ id: string, text: string, done: boolean }>} */
+  /** @type {Array<{ id: string, text: string, done: boolean, subtasks?: Array<{ id: string, text: string, done: boolean }> }>} */
   let items = [];
   /** @type {number | null} */
   let projectId = null;
@@ -873,6 +874,12 @@ export function mountTasksMobile(root, config = {}) {
       checkClass: 'mobile-tasks__waiting-check',
       onMetaChange: (meta) => {
         taskRandomMeta = meta;
+        syncWaitingListTag(
+          detailPane.querySelector(
+            `.mobile-tasks__task[data-id="${CSS.escape(taskId)}"] .mobile-tasks__task-text`,
+          ),
+          meta.byTaskId?.[String(taskId)] || null,
+        );
       },
     });
     moveWaitingSlot.append(waiting.wrap);
@@ -1244,7 +1251,107 @@ export function mountTasksMobile(root, config = {}) {
   }
 
   /**
-   * @param {{ id: string, text: string, done: boolean }} item
+   * @param {string} id
+   * @returns {{ kind: 'task', index: number } | { kind: 'subtask', parentIndex: number, subIndex: number } | null}
+   */
+  function locateItem(id) {
+    const index = items.findIndex((it) => it.id === id);
+    if (index >= 0) return { kind: 'task', index };
+    for (let i = 0; i < items.length; i++) {
+      const subs = items[i].subtasks || [];
+      const subIndex = subs.findIndex((s) => s.id === id);
+      if (subIndex >= 0) return { kind: 'subtask', parentIndex: i, subIndex };
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} id
+   */
+  function getItem(id) {
+    const loc = locateItem(id);
+    if (!loc) return null;
+    if (loc.kind === 'task') return items[loc.index];
+    return items[loc.parentIndex].subtasks[loc.subIndex];
+  }
+
+  /**
+   * @param {string} id
+   * @param {{ text?: string, done?: boolean }} patch
+   */
+  function patchItem(id, patch) {
+    const loc = locateItem(id);
+    if (!loc) return false;
+    if (loc.kind === 'task') {
+      items[loc.index] = { ...items[loc.index], ...patch };
+      return true;
+    }
+    const parent = items[loc.parentIndex];
+    const subs = [...(parent.subtasks || [])];
+    subs[loc.subIndex] = { ...subs[loc.subIndex], ...patch };
+    items[loc.parentIndex] = { ...parent, subtasks: subs };
+    return true;
+  }
+
+  /**
+   * @param {string} id
+   */
+  function dropItem(id) {
+    const loc = locateItem(id);
+    if (!loc) return false;
+    if (loc.kind === 'task') {
+      items = items.filter((it) => it.id !== id);
+      return true;
+    }
+    const parent = items[loc.parentIndex];
+    items[loc.parentIndex] = {
+      ...parent,
+      subtasks: (parent.subtasks || []).filter((s) => s.id !== id),
+    };
+    return true;
+  }
+
+  /**
+   * @param {{ id: string, text: string, done: boolean }} sub
+   */
+  function renderSubtask(sub) {
+    const li = document.createElement('li');
+    li.className = 'mobile-tasks__subtask';
+    li.dataset.id = sub.id;
+    if (sub.done) li.classList.add('mobile-tasks__subtask--done');
+    if (pendingDone.has(sub.id)) li.classList.add('mobile-tasks__subtask--pending');
+
+    const arrow = document.createElement('span');
+    arrow.className = 'mobile-tasks__subtask-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = '↳';
+
+    const label = document.createElement('label');
+    label.className = 'mobile-tasks__subtask-label';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'mobile-tasks__check mobile-tasks__subtask-check';
+    cb.checked = sub.done;
+    cb.setAttribute('aria-label', `Subtask: ${sub.text}`);
+
+    const text = document.createElement('span');
+    text.className = 'mobile-tasks__subtask-text';
+    fillLinkifiedText(text, sub.text);
+
+    label.append(cb, text);
+    li.append(arrow, label);
+
+    cb.addEventListener('change', () => {
+      if (cb.checked) scheduleDone(sub.id);
+      else cancelDone(sub.id);
+    });
+
+    return li;
+  }
+
+  /**
+   * @param {{ id: string, text: string, done: boolean, subtasks?: Array<{ id: string, text: string, done: boolean }> }} item
    */
   function renderTask(item) {
     const li = document.createElement('li');
@@ -1279,6 +1386,9 @@ export function mountTasksMobile(root, config = {}) {
     text.className = 'mobile-tasks__task-text';
     fillLinkifiedText(text, item.text);
     text.title = 'Long-press to edit task';
+    if (!item.done && !pendingDone.has(item.id)) {
+      syncWaitingListTag(text, taskRandomMeta.byTaskId?.[String(item.id)] || null);
+    }
 
     label.append(cb, text);
     row.append(label);
@@ -1293,14 +1403,32 @@ export function mountTasksMobile(root, config = {}) {
     });
 
     li.append(row);
+
+    const visibleSubs = (item.subtasks || []).filter(
+      (s) => s.id && s.text && (!s.done || pendingDone.has(s.id)),
+    );
+    if (visibleSubs.length) {
+      const subList = document.createElement('ul');
+      subList.className = 'mobile-tasks__subtasks';
+      subList.setAttribute('aria-label', `Subtasks of ${item.text}`);
+      for (const sub of visibleSubs) subList.append(renderSubtask(sub));
+      li.append(subList);
+    }
+
     return li;
   }
 
   function syncTaskDom(id, done) {
     const li = detailPane.querySelector(`[data-id="${CSS.escape(id)}"]`);
     if (!li) return;
-    li.classList.toggle('mobile-tasks__task--done', done);
-    li.classList.toggle('mobile-tasks__task--pending', pendingDone.has(id));
+    const isSub = li.classList.contains('mobile-tasks__subtask');
+    if (isSub) {
+      li.classList.toggle('mobile-tasks__subtask--done', done);
+      li.classList.toggle('mobile-tasks__subtask--pending', pendingDone.has(id));
+    } else {
+      li.classList.toggle('mobile-tasks__task--done', done);
+      li.classList.toggle('mobile-tasks__task--pending', pendingDone.has(id));
+    }
     const cb = li.querySelector('.mobile-tasks__check');
     if (cb instanceof HTMLInputElement) cb.checked = done;
   }
@@ -1309,9 +1437,8 @@ export function mountTasksMobile(root, config = {}) {
    * @param {string} id
    */
   function scheduleDone(id) {
-    const index = items.findIndex((it) => it.id === id);
-    if (index < 0 || pendingDone.has(id)) return;
-    items[index] = { ...items[index], done: true };
+    if (!getItem(id) || pendingDone.has(id)) return;
+    patchItem(id, { done: true });
     const timer = setTimeout(() => {
       pendingDone.delete(id);
       void commitDone(id);
@@ -1326,9 +1453,8 @@ export function mountTasksMobile(root, config = {}) {
   function cancelDone(id) {
     if (!pendingDone.has(id)) return;
     clearPending(id);
-    const index = items.findIndex((it) => it.id === id);
-    if (index < 0) return;
-    items[index] = { ...items[index], done: false };
+    if (!getItem(id)) return;
+    patchItem(id, { done: false });
     syncTaskDom(id, false);
   }
 
@@ -1336,9 +1462,7 @@ export function mountTasksMobile(root, config = {}) {
    * @param {string} id
    */
   function removeTaskLocally(id) {
-    const index = items.findIndex((it) => it.id === id);
-    if (index < 0) return;
-    items = items.filter((it) => it.id !== id);
+    if (!dropItem(id)) return;
     renderDetailShell();
   }
 
@@ -1347,9 +1471,7 @@ export function mountTasksMobile(root, config = {}) {
    * @param {string} text
    */
   function updateTaskTextLocally(id, text) {
-    const index = items.findIndex((it) => it.id === id);
-    if (index < 0) return;
-    items[index] = { ...items[index], text };
+    if (!patchItem(id, { text })) return;
     renderDetailShell();
   }
 
@@ -1357,9 +1479,18 @@ export function mountTasksMobile(root, config = {}) {
    * @param {string} id
    */
   async function commitDone(id) {
-    const index = items.findIndex((it) => it.id === id);
-    if (index < 0) return;
-    const prev = items[index];
+    const prev = getItem(id);
+    if (!prev) return;
+    const loc = locateItem(id);
+    const friendProj = projects.find((p) => p.id === projectId);
+    const friendParentId =
+      isFriendTasksProjectTitle(friendProj?.title) && loc?.kind === 'subtask'
+        ? items[loc.parentIndex]?.id
+        : null;
+    const friendSiblings =
+      friendParentId != null
+        ? (items[loc.parentIndex].subtasks || []).filter((s) => s.id !== id && s.text).length
+        : -1;
     try {
       const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(id)}/done`, {
         method: 'PATCH',
@@ -1371,15 +1502,22 @@ export function mountTasksMobile(root, config = {}) {
       notifyContactTaskDone(j.contactTask || j.item?.contactTask);
       const cleared = await clearTaskSchedule(id);
       if (cleared) taskRandomMeta = cleared;
-      items = items.filter((it) => it.id !== id);
+      dropItem(id);
+      const removedParentId =
+        j.contactTask?.removedParentId ||
+        j.item?.contactTask?.removedParentId ||
+        (friendSiblings === 0 ? friendParentId : null);
+      if (removedParentId && removedParentId !== id) dropItem(removedParentId);
       renderDetailShell();
       showStatus('');
     } catch {
       clearPending(id);
-      const i = items.findIndex((it) => it.id === id);
-      if (i >= 0) items[i] = { ...prev, done: false };
+      patchItem(id, { done: false });
       renderDetailShell();
-      showStatus('Could not mark task done.', true);
+      showStatus(
+        loc?.kind === 'subtask' ? 'Could not complete subtask.' : 'Could not mark task done.',
+        true,
+      );
     }
   }
 
@@ -1424,12 +1562,23 @@ export function mountTasksMobile(root, config = {}) {
     clearAllPending();
     items = Array.isArray(j.items)
       ? j.items
-          .map((it) => ({
-            id: String(it.id),
-            text: String(it.text || '').trim(),
-            done: Boolean(it.done),
-          }))
-          .filter((it) => it.id && it.text)
+          .map((it) => {
+            const id = String(it.id || '').trim();
+            const text = String(it.text || '').trim();
+            if (!id || !text) return null;
+            const subtasks = Array.isArray(it.subtasks)
+              ? it.subtasks
+                  .map((s) => {
+                    const sid = String(s?.id || '').trim();
+                    const st = String(s?.text || '').trim();
+                    if (!sid || !st) return null;
+                    return { id: sid, text: st, done: Boolean(s.done) };
+                  })
+                  .filter(Boolean)
+              : [];
+            return { id, text, done: Boolean(it.done), subtasks };
+          })
+          .filter(Boolean)
       : [];
     canWrite = true;
     renderDetailShell();
@@ -1454,6 +1603,7 @@ export function mountTasksMobile(root, config = {}) {
         id: String(j.item.id),
         text: String(j.item.text).trim(),
         done: false,
+        subtasks: [],
       });
       renderDetailShell();
       showStatus('');
@@ -1844,10 +1994,7 @@ export function mountTasksMobile(root, config = {}) {
       const wasProject = view === 'detail' && projectId != null;
       const prevId = projectId;
       await loadProjects();
-      const contactProj = projects.find(
-        (p) =>
-          String(p.title || '').trim().toLowerCase() === CONTACT_TASKS_PROJECT_TITLE.toLowerCase(),
-      );
+      const contactProj = projects.find((p) => isFriendTasksProjectTitle(p.title));
       if (wasProject && contactProj && prevId === contactProj.id && view === 'detail') {
         await loadTodos();
       }

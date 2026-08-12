@@ -156,6 +156,7 @@ function assignSummaryEntries(taskMeta, projectMeta) {
  * @param {Record<string, unknown>} data
  * @param {{
  *   onAssignSaved?: (row: Record<string, unknown> | null, fullMeta: object) => void | Promise<void>,
+ *   beforeCardRemount?: () => void | Promise<void>,
  * } & Partial<Parameters<typeof renderTaskCardModal>[0]>} opts
  */
 function appendAssignFields(assignRow, fields, taskMeta, projectMeta, data, opts) {
@@ -194,6 +195,7 @@ function appendAssignFields(assignRow, fields, taskMeta, projectMeta, data, opts
         }
         b.disabled = true;
         try {
+          await opts.beforeCardRemount?.();
           const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(data.task.id)}/meta`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -309,7 +311,7 @@ function missingFieldsForCard(taskMeta, projectMeta) {
 /**
  * @param {HTMLElement} parent
  * @param {string} title
- * @param {{ hideClose?: boolean }} [opts]
+ * @param {{ hideClose?: boolean, hideTitle?: boolean, onBeforeClose?: () => void | Promise<void> }} [opts]
  */
 function makeModalShell(parent, title, opts = {}) {
   const backdrop = document.createElement('div');
@@ -342,9 +344,17 @@ function makeModalShell(parent, title, opts = {}) {
   backdrop.append(modal);
   parent.append(backdrop);
 
+  let closing = false;
   function close() {
-    backdrop.remove();
-    document.removeEventListener('keydown', onKey);
+    if (closing) return;
+    closing = true;
+    const before = opts.onBeforeClose?.();
+    const finish = () => {
+      backdrop.remove();
+      document.removeEventListener('keydown', onKey);
+    };
+    if (before && typeof before.then === 'function') void before.finally(finish);
+    else finish();
   }
   function onKey(e) {
     if (e.key === 'Escape') close();
@@ -504,6 +514,8 @@ async function saveRandomTaskText(taskId, text) {
  *   onSkip: () => void,
  *   onSkipProject: () => void,
  *   closeCard: () => void,
+ *   onMetaChange?: (meta: object) => void,
+ *   onWaitingReady?: (waiting: { flush: () => Promise<void> }) => void,
  * }} opts
  */
 async function renderTaskCardModal(opts) {
@@ -591,7 +603,12 @@ async function renderTaskCardModal(opts) {
 
   const assignRow = document.createElement('div');
   assignRow.className = 'tasks-random__assign';
-  appendAssignFields(assignRow, ALL_ASSIGN_FIELDS, taskMeta, projectMeta, data, opts);
+  /** @type {{ flush: () => Promise<void> }} */
+  const waitingApi = { flush: async () => {} };
+  appendAssignFields(assignRow, ALL_ASSIGN_FIELDS, taskMeta, projectMeta, data, {
+    ...opts,
+    beforeCardRemount: () => waitingApi.flush(),
+  });
   assignWrap.append(assignSummary, assignRow);
   card.append(assignWrap);
 
@@ -624,6 +641,8 @@ async function renderTaskCardModal(opts) {
     },
   });
   waitingSlot.append(waiting.wrap);
+  waitingApi.flush = () => waiting.flush();
+  opts.onWaitingReady?.(waiting);
 
   const actions = document.createElement('div');
   actions.className = 'tasks-random__actions';
@@ -645,15 +664,31 @@ async function renderTaskCardModal(opts) {
   card.append(bottom);
   body.append(card);
 
-  skipBtn.addEventListener('click', onSkip);
-  skipProjectBtn.addEventListener('click', onSkipProject);
+  async function withWaitingFlush(fn) {
+    await waiting.flush();
+    return fn();
+  }
+
+  skipBtn.addEventListener('click', () => {
+    skipBtn.disabled = true;
+    void withWaitingFlush(onSkip).finally(() => {
+      skipBtn.disabled = false;
+    });
+  });
+  skipProjectBtn.addEventListener('click', () => {
+    skipProjectBtn.disabled = true;
+    void withWaitingFlush(onSkipProject).finally(() => {
+      skipProjectBtn.disabled = false;
+    });
+  });
   sched.button.addEventListener('click', async () => {
     sched.button.disabled = true;
     try {
+      await waiting.flush();
       const { row } = await scheduleTaskToCalendar(
         String(data.task.id),
         String(data.task.text || ''),
-        taskMeta,
+        data.meta || taskMeta,
       );
       await renderTaskCardModal({
         ...opts,
@@ -669,6 +704,7 @@ async function renderTaskCardModal(opts) {
   doneBtn.addEventListener('click', async () => {
     doneBtn.disabled = true;
     try {
+      await waiting.flush();
       await onMarkDone?.(String(data.task.id));
     } catch {
       doneBtn.disabled = false;
@@ -677,13 +713,9 @@ async function renderTaskCardModal(opts) {
 
   void ensureOverduePriority(String(data.task.id), taskMeta).then((res) => {
     if (!res) return;
-    void renderTaskCardModal({
-      ...opts,
-      data: {
-        ...data,
-        meta: res.row,
-      },
-    });
+    data.meta = res.row;
+    sched.sync(res.row);
+    opts.onMetaChange?.(res.meta);
   });
 }
 
@@ -805,13 +837,19 @@ export function openRandomTaskPicker(opts) {
   }
 
   function openTaskCardModal() {
-    const cardShell = makeModalShell(root, '', { hideTitle: true });
+    /** @type {() => Promise<void>} */
+    let flushCurrentWaiting = async () => {};
+    const cardShell = makeModalShell(root, '', {
+      hideTitle: true,
+      onBeforeClose: () => flushCurrentWaiting(),
+    });
     /** @type {string | null} */
     let currentTaskId = null;
     /** @type {number | null} */
     let currentProjectId = null;
 
     async function pickAndShow() {
+      flushCurrentWaiting = async () => {};
       const loading = document.createElement('p');
       loading.className = 'tasks-random__status muted';
       loading.textContent = 'Picking a task…';
@@ -828,6 +866,9 @@ export function openRandomTaskPicker(opts) {
           data: j,
           closeCard: cardShell.close,
           onTextChange,
+          onWaitingReady: (waiting) => {
+            flushCurrentWaiting = () => waiting.flush();
+          },
           onSkip: () => {
             if (currentTaskId) excludeIds.push(currentTaskId);
             void pickAndShow();
@@ -987,6 +1028,37 @@ export async function openProjectLocationsTable(opts) {
 }
 
 /**
+ * Compact "waiting" pill for project task lists.
+ * @param {{ waitingOn?: boolean, waitingNotes?: string } | null | undefined} taskMeta
+ * @returns {HTMLSpanElement | null}
+ */
+export function createWaitingListTag(taskMeta) {
+  if (taskMeta?.waitingOn !== true) return null;
+  const tag = document.createElement('span');
+  tag.className = 'tasks-waiting-tag';
+  tag.textContent = 'waiting';
+  const notes = String(taskMeta.waitingNotes || '').trim();
+  tag.title = notes || 'Waiting on something';
+  tag.setAttribute('aria-label', notes ? `Waiting on: ${notes}` : 'Waiting on something');
+  tag.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  return tag;
+}
+
+/**
+ * @param {HTMLElement | null | undefined} host
+ * @param {{ waitingOn?: boolean, waitingNotes?: string } | null | undefined} taskMeta
+ */
+export function syncWaitingListTag(host, taskMeta) {
+  if (!(host instanceof HTMLElement)) return;
+  host.querySelectorAll('.tasks-waiting-tag').forEach((el) => el.remove());
+  const tag = createWaitingListTag(taskMeta);
+  if (tag) host.append(tag);
+}
+
+/**
  * "Waiting on" checkbox (task detail popup) with optional note for what it's blocked on.
  * @param {{
  *   taskId: string,
@@ -1036,7 +1108,8 @@ export function createWaitingOnControl(opts) {
   notes.hidden = !waitingOn;
   notes.setAttribute('aria-label', 'What are you waiting on?');
 
-  wrap.append(toggle, notes);
+  wrap.append(toggle);
+  if (waitingOn) wrap.append(notes);
 
   wrap.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1045,24 +1118,58 @@ export function createWaitingOnControl(opts) {
   function setWaitingUi(on) {
     wrap.classList.toggle('is-waiting-on', on);
     notes.hidden = !on;
+    if (on) {
+      if (!notes.isConnected) wrap.append(notes);
+    } else {
+      notes.remove();
+    }
   }
 
   /** @type {ReturnType<typeof setTimeout> | null} */
   let notesSaveTimer = null;
+  let notesDirty = false;
+  /** @type {Promise<void> | null} */
+  let notesSaveInFlight = null;
 
   function saveNotes() {
-    void patchTaskRandomMeta(taskId, { waitingNotes: notes.value })
+    if (!cb.checked) {
+      notesDirty = false;
+      return Promise.resolve();
+    }
+    notesDirty = false;
+    const value = notes.value;
+    notesSaveInFlight = patchTaskRandomMeta(taskId, {
+      waitingOn: true,
+      waitingNotes: value,
+    })
       .then((meta) => {
         onMetaChange?.(meta);
       })
       .catch(() => {
-        /* keep typed text; retry on next edit */
+        notesDirty = true;
+      })
+      .finally(() => {
+        notesSaveInFlight = null;
       });
+    return notesSaveInFlight;
+  }
+
+  async function flush() {
+    if (notesSaveTimer) {
+      clearTimeout(notesSaveTimer);
+      notesSaveTimer = null;
+    }
+    if (notesDirty) await saveNotes();
+    else if (notesSaveInFlight) await notesSaveInFlight;
   }
 
   notes.addEventListener('input', () => {
+    notesDirty = true;
     if (notesSaveTimer) clearTimeout(notesSaveTimer);
-    notesSaveTimer = setTimeout(saveNotes, 400);
+    notesSaveTimer = setTimeout(() => {
+      notesSaveTimer = null;
+      void saveNotes();
+    }, 400);
   });
 
   notes.addEventListener('keydown', (e) => {
@@ -1073,17 +1180,20 @@ export function createWaitingOnControl(opts) {
   });
 
   notes.addEventListener('blur', () => {
-    if (notesSaveTimer) {
-      clearTimeout(notesSaveTimer);
-      notesSaveTimer = null;
-      saveNotes();
-    }
+    void flush();
   });
 
   cb.addEventListener('change', () => {
     const next = cb.checked;
     cb.disabled = true;
     setWaitingUi(next);
+    if (!next) {
+      if (notesSaveTimer) {
+        clearTimeout(notesSaveTimer);
+        notesSaveTimer = null;
+      }
+      notesDirty = false;
+    }
     void patchTaskRandomMeta(taskId, { waitingOn: next })
       .then((meta) => {
         onMetaChange?.(meta);
@@ -1103,7 +1213,7 @@ export function createWaitingOnControl(opts) {
       });
   });
 
-  return { wrap, checkbox: cb, notes };
+  return { wrap, checkbox: cb, notes, flush };
 }
 
 /**

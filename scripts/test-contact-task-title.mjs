@@ -1,10 +1,28 @@
 import assert from 'node:assert/strict';
 import {
+  CONTACT_TASKS_PROJECT_TITLE,
+  contactParentDescription,
   contactTaskDescription,
   contactTaskTextFromVikunjaTitle,
+  formatContactParentTitle,
+  formatContactSubtaskTitle,
   formatContactTaskTitle,
+  isFriendTasksProjectTitle,
+  parseContactParentDescription,
   parseContactTaskDescription,
 } from '../src/lib/contact-task-title.js';
+
+assert.equal(CONTACT_TASKS_PROJECT_TITLE, 'Friend Tasks');
+assert.equal(isFriendTasksProjectTitle('Friend Tasks'), true);
+assert.equal(isFriendTasksProjectTitle('Contact Tasks'), true);
+assert.equal(isFriendTasksProjectTitle('Inbox'), false);
+
+assert.equal(formatContactParentTitle({ displayName: 'Jane Doe', nickname: 'Jay' }), 'Jane Doe (Jay)');
+assert.equal(formatContactParentTitle({ displayName: 'Jane Doe' }), 'Jane Doe');
+assert.equal(formatContactParentTitle({ displayName: 'Jay', nickname: 'Jay' }), 'Jay');
+
+assert.equal(formatContactSubtaskTitle('Call about lunch'), 'Call about lunch');
+assert.ok(formatContactSubtaskTitle('x'.repeat(400)).length <= 280);
 
 assert.equal(
   formatContactTaskTitle({ displayName: 'Jane Doe', nickname: 'Jay' }, 'Call about lunch'),
@@ -31,6 +49,12 @@ assert.deepEqual(parseContactTaskDescription(`notes\n${desc}\n`), {
   taskId: 'task_abc',
 });
 assert.equal(parseContactTaskDescription('unrelated'), null);
+
+const parentDesc = contactParentDescription('783');
+assert.equal(parentDesc, 'dashbird:contact-parent:783');
+assert.deepEqual(parseContactParentDescription(`notes\n${parentDesc}\n`), { contactId: '783' });
+assert.equal(parseContactParentDescription(desc), null);
+assert.equal(parseContactParentDescription('unrelated'), null);
 
 assert.equal(
   contactTaskTextFromVikunjaTitle('Jane Doe (Jay) — Call about lunch'),

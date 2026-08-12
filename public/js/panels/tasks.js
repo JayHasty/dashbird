@@ -5,6 +5,7 @@ import {
   openWaitingOnList,
   openRecentlyArchivedTasks,
   createWaitingOnControl,
+  syncWaitingListTag,
 } from '../lib/task-random-ui.js';
 import { fetchTaskRandomMeta } from '../lib/task-location-meta.js';
 import {
@@ -14,7 +15,7 @@ import {
   scheduleTaskToCalendar,
 } from '../lib/task-schedule.js';
 import {
-  CONTACT_TASKS_PROJECT_TITLE,
+  isFriendTasksProjectTitle,
   notifyContactTaskDone,
   onContactTasksChanged,
   onTaskCreated,
@@ -34,6 +35,41 @@ const DND_TASK_MIME = 'application/x-dashbird-task-id';
 const DND_PROJECT_MIME = 'application/x-dashbird-project-id';
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_PX = 10;
+
+/**
+ * @param {unknown} it
+ * @returns {{ id: string, text: string, done: boolean, subtasks: Array<{ id: string, text: string, done: boolean }> } | null}
+ */
+function parsePanelTodo(it) {
+  if (!it || typeof it !== 'object') return null;
+  const id = String(it.id || '').trim();
+  const text = String(it.text || '').trim();
+  if (!id || !text) return null;
+  const subtasks = Array.isArray(it.subtasks)
+    ? it.subtasks
+        .map((s) => {
+          if (!s || typeof s !== 'object') return null;
+          const sid = String(s.id || '').trim();
+          const st = String(s.text || '').trim();
+          if (!sid || !st) return null;
+          return { id: sid, text: st, done: Boolean(s.done) };
+        })
+        .filter(Boolean)
+    : [];
+  return { id, text, done: Boolean(it.done), subtasks };
+}
+
+/**
+ * @param {Array<{ id: string, text: string, done: boolean, subtasks?: Array<{ id: string, text: string, done: boolean }> }>} list
+ */
+function clonePanelTodos(list) {
+  return list.map((it) => ({
+    id: it.id,
+    text: it.text,
+    done: Boolean(it.done),
+    subtasks: Array.isArray(it.subtasks) ? it.subtasks.map((s) => ({ ...s })) : [],
+  }));
+}
 
 export function mountTasks(root, config = {}) {
   root.replaceChildren();
@@ -264,9 +300,9 @@ export function mountTasks(root, config = {}) {
 
   /** @type {Array<{ id: number, title: string, position?: number }>} */
   let projects = [];
-  /** @type {Array<{ id: string, text: string, done: boolean }>} */
+  /** @type {Array<{ id: string, text: string, done: boolean, subtasks: Array<{ id: string, text: string, done: boolean }> }>} */
   let items = [];
-  /** @type {Map<number, Array<{ id: string, text: string, done: boolean }>>} */
+  /** @type {Map<number, Array<{ id: string, text: string, done: boolean, subtasks: Array<{ id: string, text: string, done: boolean }> }>>} */
   const todosCache = new Map();
   /** @type {number | null} */
   let projectId = null;
@@ -329,12 +365,12 @@ export function mountTasks(root, config = {}) {
     if (!id || !text) return;
 
     const pid = task.projectId != null ? Number(task.projectId) : projectId;
-    const row = { id, text, done: false };
+    const row = { id, text, done: false, subtasks: [] };
 
     if (pid != null && pid !== projectId) {
       const cached = todosCache.get(pid) || [];
       if (!cached.some((it) => it.id === id)) {
-        todosCache.set(pid, [row, ...cached]);
+        todosCache.set(pid, clonePanelTodos([row, ...cached]));
       }
       selectProject(pid);
       requestAnimationFrame(() => {
@@ -346,7 +382,7 @@ export function mountTasks(root, config = {}) {
     if (!items.some((it) => it.id === id)) {
       items.unshift(row);
       if (projectId != null) {
-        todosCache.set(projectId, items.map((it) => ({ ...it })));
+        todosCache.set(projectId, clonePanelTodos(items));
       }
       renderList();
     }
@@ -526,7 +562,7 @@ export function mountTasks(root, config = {}) {
     const cached = todosCache.get(id);
     if (cached) {
       clearAllPending();
-      items = cached.map((it) => ({ ...it }));
+      items = clonePanelTodos(cached);
       setWritable(true);
       renderList();
       showStatus('');
@@ -693,11 +729,14 @@ export function mountTasks(root, config = {}) {
     const moved = prev.find((it) => it.id === taskId);
     items = items.filter((it) => it.id !== taskId);
     clearPending(taskId);
-    if (projectId != null) todosCache.set(projectId, items.map((it) => ({ ...it })));
+    if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
     if (moved) {
       const dest = todosCache.get(targetProjectId);
       if (dest) {
-        todosCache.set(targetProjectId, [{ ...moved, done: false }, ...dest]);
+        todosCache.set(
+          targetProjectId,
+          clonePanelTodos([{ ...moved, done: false }, ...dest]),
+        );
       } else {
         todosCache.delete(targetProjectId);
       }
@@ -715,7 +754,7 @@ export function mountTasks(root, config = {}) {
       showStatus('');
     } catch {
       items = prev;
-      if (projectId != null) todosCache.set(projectId, items.map((it) => ({ ...it })));
+      if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
       todosCache.delete(targetProjectId);
       renderList();
       showStatus('Could not move task.', true);
@@ -819,8 +858,7 @@ export function mountTasks(root, config = {}) {
         done: Boolean(j.item.done),
       };
       if (!item.id || !item.text) throw new Error('invalid_item');
-      // Subtasks are hidden from the project list; drop if create raced into cache.
-      removeTaskLocally(item.id, projectId);
+      addSubtaskLocally(parentId, item);
       if (movingTaskId === parentId) {
         moveSubtaskItems = [...moveSubtaskItems.filter((s) => s.id !== item.id), item];
         // Keep open subtasks first, then done.
@@ -863,7 +901,8 @@ export function mountTasks(root, config = {}) {
       );
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
-      removeTaskLocally(subtaskId, projectId);
+      if (done) removeTaskLocally(subtaskId, projectId);
+      else addSubtaskLocally(parentId, { id: subtaskId, text: prev.text, done: false });
       showStatus('');
     } catch {
       if (movingTaskId === parentId) {
@@ -1005,6 +1044,12 @@ export function mountTasks(root, config = {}) {
       checkClass: 'tasks-panel__waiting-check',
       onMetaChange: (meta) => {
         taskRandomMeta = meta;
+        syncWaitingListTag(
+          list.querySelector(
+            `.tasks-panel__item[data-id="${CSS.escape(taskId)}"] .tasks-panel__text`,
+          ),
+          meta.byTaskId?.[String(taskId)] || null,
+        );
       },
     });
     moveWaitingSlot.append(waiting.wrap);
@@ -1204,11 +1249,111 @@ export function mountTasks(root, config = {}) {
     }
   }
 
+  /**
+   * @param {string} id
+   * @returns {{ kind: 'task', index: number } | { kind: 'subtask', parentIndex: number, subIndex: number } | null}
+   */
+  function locateItem(id) {
+    const index = items.findIndex((it) => it.id === id);
+    if (index >= 0) return { kind: 'task', index };
+    for (let i = 0; i < items.length; i++) {
+      const subs = items[i].subtasks || [];
+      const subIndex = subs.findIndex((s) => s.id === id);
+      if (subIndex >= 0) return { kind: 'subtask', parentIndex: i, subIndex };
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} id
+   */
+  function getItem(id) {
+    const loc = locateItem(id);
+    if (!loc) return null;
+    if (loc.kind === 'task') return items[loc.index];
+    return items[loc.parentIndex].subtasks[loc.subIndex];
+  }
+
+  /**
+   * @param {string} id
+   * @param {{ text?: string, done?: boolean }} patch
+   */
+  function patchItem(id, patch) {
+    const loc = locateItem(id);
+    if (!loc) return false;
+    if (loc.kind === 'task') {
+      items[loc.index] = { ...items[loc.index], ...patch };
+      return true;
+    }
+    const parent = items[loc.parentIndex];
+    const subs = [...(parent.subtasks || [])];
+    subs[loc.subIndex] = { ...subs[loc.subIndex], ...patch };
+    items[loc.parentIndex] = { ...parent, subtasks: subs };
+    return true;
+  }
+
+  /**
+   * @param {string} id
+   */
+  function dropItem(id) {
+    const loc = locateItem(id);
+    if (!loc) return false;
+    if (loc.kind === 'task') {
+      items = items.filter((it) => it.id !== id);
+      return true;
+    }
+    const parent = items[loc.parentIndex];
+    items[loc.parentIndex] = {
+      ...parent,
+      subtasks: (parent.subtasks || []).filter((s) => s.id !== id),
+    };
+    return true;
+  }
+
+  /**
+   * @param {string} parentId
+   * @param {{ id: string, text: string, done?: boolean }} sub
+   */
+  function addSubtaskLocally(parentId, sub) {
+    if (!sub?.id || !sub?.text) return;
+    items = items.filter((it) => it.id !== sub.id);
+    const loc = locateItem(parentId);
+    if (!loc || loc.kind !== 'task') return;
+    const parent = items[loc.index];
+    const subs = [...(parent.subtasks || [])].filter((s) => s.id !== sub.id);
+    items[loc.index] = {
+      ...parent,
+      subtasks: [...subs, { id: sub.id, text: sub.text, done: Boolean(sub.done) }],
+    };
+    if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
+    renderList();
+  }
+
+  /**
+   * @param {Array<{ id: string, text: string, done: boolean, subtasks?: Array<{ id: string, text: string, done: boolean }> }>} list
+   * @param {string} id
+   */
+  function stripTodoId(list, id) {
+    return list
+      .filter((it) => it.id !== id)
+      .map((it) => ({
+        ...it,
+        subtasks: (it.subtasks || []).filter((s) => s.id !== id),
+      }));
+  }
+
   function syncRowDom(id, done) {
     const li = list.querySelector(`[data-id="${CSS.escape(id)}"]`);
     if (!li) return;
-    li.classList.toggle('tasks-panel__item--done', done);
-    li.classList.toggle('tasks-panel__item--pending-hide', pendingDone.has(id));
+    const isSub = li.classList.contains('tasks-panel__subtask');
+    if (isSub) {
+      li.classList.toggle('tasks-panel__subtask--done', done);
+      li.classList.toggle('tasks-panel__subtask--pending-hide', pendingDone.has(id));
+    } else {
+      li.classList.toggle('tasks-panel__item--done', done);
+      li.classList.toggle('tasks-panel__item--pending-hide', pendingDone.has(id));
+      li.draggable = !done && !pendingDone.has(id);
+    }
     const cb = li.querySelector('.tasks-panel__check');
     if (cb instanceof HTMLInputElement) cb.checked = done;
   }
@@ -1222,7 +1367,46 @@ export function mountTasks(root, config = {}) {
   }
 
   /**
-   * @param {{ id: string, text: string, done: boolean }} item
+   * @param {{ id: string, text: string, done: boolean }} sub
+   */
+  function renderSubtask(sub) {
+    const li = document.createElement('li');
+    li.className = 'tasks-panel__subtask';
+    li.dataset.id = sub.id;
+    if (sub.done) li.classList.add('tasks-panel__subtask--done');
+    if (pendingDone.has(sub.id)) li.classList.add('tasks-panel__subtask--pending-hide');
+
+    const arrow = document.createElement('span');
+    arrow.className = 'tasks-panel__subtask-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = '↳';
+
+    const label = document.createElement('label');
+    label.className = 'tasks-panel__subtask-label';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'tasks-panel__check tasks-panel__subtask-check';
+    cb.checked = sub.done;
+    cb.setAttribute('aria-label', `Subtask: ${sub.text}`);
+
+    const text = document.createElement('span');
+    text.className = 'tasks-panel__subtask-text';
+    fillLinkifiedText(text, sub.text);
+
+    label.append(cb, text);
+    li.append(arrow, label);
+
+    cb.addEventListener('change', () => {
+      if (cb.checked) scheduleDone(sub.id);
+      else cancelDone(sub.id);
+    });
+
+    return li;
+  }
+
+  /**
+   * @param {{ id: string, text: string, done: boolean, subtasks?: Array<{ id: string, text: string, done: boolean }> }} item
    */
   function renderItem(item) {
     const li = document.createElement('li');
@@ -1255,6 +1439,9 @@ export function mountTasks(root, config = {}) {
     text.className = 'tasks-panel__text';
     fillLinkifiedText(text, item.text);
     text.title = 'Double-click to edit task';
+    if (!item.done && !pendingDone.has(item.id)) {
+      syncWaitingListTag(text, taskRandomMeta.byTaskId?.[String(item.id)] || null);
+    }
 
     label.append(cb, text);
 
@@ -1269,6 +1456,17 @@ export function mountTasks(root, config = {}) {
     }
 
     li.append(row);
+
+    const visibleSubs = (item.subtasks || []).filter(
+      (s) => s.id && s.text && (!s.done || pendingDone.has(s.id)),
+    );
+    if (visibleSubs.length) {
+      const subList = document.createElement('ul');
+      subList.className = 'tasks-panel__subtasks';
+      subList.setAttribute('aria-label', `Subtasks of ${item.text}`);
+      for (const sub of visibleSubs) subList.append(renderSubtask(sub));
+      li.append(subList);
+    }
 
     cb.addEventListener('change', () => {
       if (cb.checked) scheduleDone(item.id);
@@ -1285,6 +1483,10 @@ export function mountTasks(root, config = {}) {
 
     li.addEventListener('dragstart', (e) => {
       if (item.done || pendingDone.has(item.id)) {
+        e.preventDefault();
+        return;
+      }
+      if (e.target instanceof Element && e.target.closest('.tasks-panel__subtasks')) {
         e.preventDefault();
         return;
       }
@@ -1308,17 +1510,14 @@ export function mountTasks(root, config = {}) {
    * @param {string} id
    */
   function scheduleDone(id) {
-    const index = items.findIndex((it) => it.id === id);
-    if (index < 0 || pendingDone.has(id)) return;
-    items[index] = { ...items[index], done: true };
+    if (!getItem(id) || pendingDone.has(id)) return;
+    patchItem(id, { done: true });
     const timer = setTimeout(() => {
       pendingDone.delete(id);
       void commitDone(id);
     }, DONE_HIDE_MS);
     pendingDone.set(id, timer);
     syncRowDom(id, true);
-    const li = list.querySelector(`[data-id="${CSS.escape(id)}"]`);
-    if (li) li.draggable = false;
   }
 
   /**
@@ -1327,12 +1526,9 @@ export function mountTasks(root, config = {}) {
   function cancelDone(id) {
     if (!pendingDone.has(id)) return;
     clearPending(id);
-    const index = items.findIndex((it) => it.id === id);
-    if (index < 0) return;
-    items[index] = { ...items[index], done: false };
+    if (!getItem(id)) return;
+    patchItem(id, { done: false });
     syncRowDom(id, false);
-    const li = list.querySelector(`[data-id="${CSS.escape(id)}"]`);
-    if (li) li.draggable = true;
   }
 
   /**
@@ -1340,18 +1536,13 @@ export function mountTasks(root, config = {}) {
    * @param {number | null} [taskProjectId]
    */
   function removeTaskLocally(id, taskProjectId = null) {
-    const index = items.findIndex((it) => it.id === id);
-    if (index >= 0) {
-      items = items.filter((it) => it.id !== id);
-      if (projectId != null) todosCache.set(projectId, items.map((it) => ({ ...it })));
+    if (dropItem(id)) {
+      if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
       renderList();
       return;
     }
     if (taskProjectId != null && todosCache.has(taskProjectId)) {
-      todosCache.set(
-        taskProjectId,
-        todosCache.get(taskProjectId).filter((it) => it.id !== id),
-      );
+      todosCache.set(taskProjectId, stripTodoId(todosCache.get(taskProjectId), id));
     }
   }
 
@@ -1361,17 +1552,21 @@ export function mountTasks(root, config = {}) {
    * @param {number | null} [taskProjectId]
    */
   function updateTaskTextLocally(id, text, taskProjectId = null) {
-    const index = items.findIndex((it) => it.id === id);
-    if (index >= 0) {
-      items[index] = { ...items[index], text };
-      if (projectId != null) todosCache.set(projectId, items.map((it) => ({ ...it })));
+    if (patchItem(id, { text })) {
+      if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
       renderList();
       return;
     }
     if (taskProjectId != null && todosCache.has(taskProjectId)) {
       todosCache.set(
         taskProjectId,
-        todosCache.get(taskProjectId).map((it) => (it.id === id ? { ...it, text } : it)),
+        todosCache.get(taskProjectId).map((it) => {
+          if (it.id === id) return { ...it, text };
+          return {
+            ...it,
+            subtasks: (it.subtasks || []).map((s) => (s.id === id ? { ...s, text } : s)),
+          };
+        }),
       );
     }
   }
@@ -1380,9 +1575,18 @@ export function mountTasks(root, config = {}) {
    * @param {string} id
    */
   async function commitDone(id) {
-    const index = items.findIndex((it) => it.id === id);
-    if (index < 0) return;
-    const prev = items[index];
+    const prev = getItem(id);
+    if (!prev) return;
+    const loc = locateItem(id);
+    const friendProj = projects.find((p) => p.id === projectId);
+    const friendParentId =
+      isFriendTasksProjectTitle(friendProj?.title) && loc?.kind === 'subtask'
+        ? items[loc.parentIndex]?.id
+        : null;
+    const friendSiblings =
+      friendParentId != null
+        ? (items[loc.parentIndex].subtasks || []).filter((s) => s.id !== id && s.text).length
+        : -1;
     try {
       const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(id)}/done`, {
         method: 'PATCH',
@@ -1394,16 +1598,23 @@ export function mountTasks(root, config = {}) {
       notifyContactTaskDone(j.contactTask || j.item?.contactTask);
       const cleared = await clearTaskSchedule(id);
       if (cleared) taskRandomMeta = cleared;
-      items = items.filter((it) => it.id !== id);
-      if (projectId != null) todosCache.set(projectId, items.map((it) => ({ ...it })));
+      dropItem(id);
+      const removedParentId =
+        j.contactTask?.removedParentId ||
+        j.item?.contactTask?.removedParentId ||
+        (friendSiblings === 0 ? friendParentId : null);
+      if (removedParentId && removedParentId !== id) dropItem(removedParentId);
+      if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
       renderList();
       showStatus('');
     } catch {
       clearPending(id);
-      const i = items.findIndex((it) => it.id === id);
-      if (i >= 0) items[i] = { ...prev, done: false };
+      patchItem(id, { done: false });
       renderList();
-      showStatus('Could not mark task done.', true);
+      showStatus(
+        loc?.kind === 'subtask' ? 'Could not complete subtask.' : 'Could not mark task done.',
+        true,
+      );
     }
   }
 
@@ -1458,16 +1669,8 @@ export function mountTasks(root, config = {}) {
     if (!r.ok || j.ok === false) throw new Error(j.detail || j.error || `HTTP ${r.status}`);
 
     clearAllPending();
-    items = Array.isArray(j.items)
-      ? j.items
-          .map((it) => ({
-            id: String(it.id),
-            text: String(it.text || '').trim(),
-            done: Boolean(it.done),
-          }))
-          .filter((it) => it.id && it.text)
-      : [];
-    todosCache.set(requestFor, items.map((it) => ({ ...it })));
+    items = Array.isArray(j.items) ? j.items.map(parsePanelTodo).filter(Boolean) : [];
+    todosCache.set(requestFor, clonePanelTodos(items));
     setWritable(true);
     renderList();
     showStatus('');
@@ -1491,8 +1694,9 @@ export function mountTasks(root, config = {}) {
       id: String(j.item.id),
       text: String(j.item.text).trim(),
       done: false,
+      subtasks: [],
     });
-    todosCache.set(projectId, items.map((it) => ({ ...it })));
+    todosCache.set(projectId, clonePanelTodos(items));
     renderList();
     showStatus('');
   }
@@ -1702,10 +1906,7 @@ export function mountTasks(root, config = {}) {
       }
       sortProjectsInPlace();
       renderProjects();
-      const contactProj = projects.find(
-        (p) =>
-          String(p.title || '').trim().toLowerCase() === CONTACT_TASKS_PROJECT_TITLE.toLowerCase(),
-      );
+      const contactProj = projects.find((p) => isFriendTasksProjectTitle(p.title));
       if (contactProj && projectId === contactProj.id) await loadTodos({ soft: true });
     } catch {
       /* ignore */
