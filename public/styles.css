@@ -16275,7 +16275,7 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   gap: 0.75rem;
   align-items: stretch;
   flex: 0 1 auto;
-  min-height: auto;
+  min-height: min(28rem, 50vh);
 }
 
 .tasks-panel__projects {
@@ -16609,6 +16609,7 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
 .tasks-panel__detail {
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -16664,9 +16665,8 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.32rem;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   min-height: 0;
-  max-height: min(28rem, 50vh);
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
