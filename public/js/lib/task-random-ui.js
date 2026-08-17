@@ -505,12 +505,201 @@ async function saveRandomTaskText(taskId, text) {
 }
 
 /**
+ * Compact subtasks list + add row for the random task card.
+ * @param {{
+ *   parentId: string,
+ *   projectId?: number | null,
+ *   onSubtaskDone?: (subtaskId: string, done: boolean, parentId: string, projectId?: number | null, text?: string) => void,
+ *   onSubtaskAdded?: (parentId: string, item: { id: string, text: string, done: boolean }, projectId?: number | null) => void,
+ * }} opts
+ */
+function createRandomCardSubtasks(opts) {
+  const { parentId, projectId = null, onSubtaskDone, onSubtaskAdded } = opts;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'tasks-random__subtasks';
+
+  const head = document.createElement('div');
+  head.className = 'tasks-random__subtasks-head';
+  head.textContent = 'Subtasks';
+
+  const list = document.createElement('ul');
+  list.className = 'tasks-random__subtasks-list';
+
+  const empty = document.createElement('p');
+  empty.className = 'tasks-random__subtasks-empty muted';
+  empty.textContent = 'Loading…';
+
+  const form = document.createElement('form');
+  form.className = 'tasks-random__subtasks-add';
+  form.setAttribute('aria-label', 'Add a subtask');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tasks-random__subtasks-input';
+  input.placeholder = 'Add a subtask…';
+  input.maxLength = 280;
+  input.autocomplete = 'off';
+  form.append(input);
+
+  wrap.append(head, list, empty, form);
+
+  /** @type {Array<{ id: string, text: string, done: boolean }>} */
+  let items = [];
+  let loadToken = 0;
+
+  function sortItems() {
+    items.sort((a, b) => Number(a.done) - Number(b.done) || a.text.localeCompare(b.text));
+  }
+
+  function paint() {
+    list.replaceChildren();
+    for (const sub of items) {
+      const li = document.createElement('li');
+      li.className = 'tasks-random__subtask';
+      li.dataset.id = sub.id;
+      if (sub.done) li.classList.add('tasks-random__subtask--done');
+
+      const label = document.createElement('label');
+      label.className = 'tasks-random__subtask-label';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'tasks-random__subtask-check';
+      cb.checked = sub.done;
+      cb.setAttribute('aria-label', `Subtask: ${sub.text}`);
+
+      const text = document.createElement('span');
+      text.className = 'tasks-random__subtask-text';
+      fillLinkifiedText(text, sub.text);
+
+      label.append(cb, text);
+      li.append(label);
+      list.append(li);
+
+      cb.addEventListener('change', () => {
+        void setDone(sub.id, cb.checked);
+      });
+    }
+    empty.hidden = items.length > 0;
+  }
+
+  /**
+   * @param {string} subtaskId
+   * @param {boolean} done
+   */
+  async function setDone(subtaskId, done) {
+    const prev = items.find((s) => s.id === subtaskId);
+    if (!prev) return;
+    items = items.map((s) => (s.id === subtaskId ? { ...s, done } : s));
+    sortItems();
+    paint();
+    try {
+      const path = done ? 'done' : 'undo';
+      const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(subtaskId)}/${path}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          done
+            ? { archive: false }
+            : { projectId: projectId, archive: false },
+        ),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+      onSubtaskDone?.(subtaskId, done, parentId, projectId, prev.text);
+    } catch {
+      items = items.map((s) => (s.id === subtaskId ? { ...s, done: prev.done } : s));
+      sortItems();
+      paint();
+    }
+  }
+
+  /**
+   * @param {string} text
+   */
+  async function add(text) {
+    const t = text.trim();
+    if (!t) return false;
+    input.disabled = true;
+    try {
+      const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(parentId)}/subtasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: t }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false || !j.item) throw new Error(j.error || `HTTP ${r.status}`);
+      const item = {
+        id: String(j.item.id),
+        text: String(j.item.text || '').trim(),
+        done: Boolean(j.item.done),
+      };
+      if (!item.id || !item.text) throw new Error('invalid_item');
+      items = [...items.filter((s) => s.id !== item.id), item];
+      sortItems();
+      empty.textContent = 'No subtasks yet.';
+      paint();
+      onSubtaskAdded?.(parentId, item, projectId);
+      input.value = '';
+      return true;
+    } catch {
+      return false;
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    void add(input.value);
+  });
+
+  async function load() {
+    const token = ++loadToken;
+    items = [];
+    empty.hidden = false;
+    empty.textContent = 'Loading…';
+    paint();
+    try {
+      const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(parentId)}/subtasks`, {
+        cache: 'no-store',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (token !== loadToken) return;
+      if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+      items = Array.isArray(j.items)
+        ? j.items
+            .map((it) => ({
+              id: String(it.id),
+              text: String(it.text || '').trim(),
+              done: Boolean(it.done),
+            }))
+            .filter((it) => it.id && it.text)
+        : [];
+      sortItems();
+      empty.textContent = 'No subtasks yet.';
+      paint();
+    } catch {
+      if (token !== loadToken) return;
+      empty.textContent = 'Could not load subtasks.';
+      empty.hidden = false;
+    }
+  }
+
+  void load();
+  return wrap;
+}
+
+/**
  * @param {{
  *   body: HTMLElement,
  *   data: Record<string, unknown>,
  *   onHighlightTask?: (task: object) => void,
  *   onMarkDone?: (id: string) => void | Promise<void>,
  *   onTextChange?: (id: string, text: string, projectId?: number | null) => void,
+ *   onSubtaskDone?: (subtaskId: string, done: boolean, parentId: string, projectId?: number | null, text?: string) => void,
+ *   onSubtaskAdded?: (parentId: string, item: { id: string, text: string, done: boolean }, projectId?: number | null) => void,
  *   onSkip: () => void,
  *   onSkipProject: () => void,
  *   closeCard: () => void,
@@ -611,6 +800,19 @@ async function renderTaskCardModal(opts) {
   });
   assignWrap.append(assignSummary, assignRow);
   card.append(assignWrap);
+
+  const projectIdForSub =
+    data.task.projectId != null && Number.isFinite(Number(data.task.projectId))
+      ? Number(data.task.projectId)
+      : null;
+  card.append(
+    createRandomCardSubtasks({
+      parentId: String(data.task.id),
+      projectId: projectIdForSub,
+      onSubtaskDone: opts.onSubtaskDone,
+      onSubtaskAdded: opts.onSubtaskAdded,
+    }),
+  );
 
   // Bottom matches task edit overlays: full-width Schedule + Waiting on, then actions.
   const bottom = document.createElement('div');
@@ -720,10 +922,18 @@ async function renderTaskCardModal(opts) {
 }
 
 /**
- * @param {{ root: HTMLElement, projects: Array<{ id: number, title: string }>, onHighlightTask?: (task: { id: string, projectId?: number | null }) => void, onDone?: (id: string, projectId?: number | null) => void, onTextChange?: (id: string, text: string, projectId?: number | null) => void }} opts
+ * @param {{
+ *   root: HTMLElement,
+ *   projects: Array<{ id: number, title: string }>,
+ *   onHighlightTask?: (task: { id: string, projectId?: number | null }) => void,
+ *   onDone?: (id: string, projectId?: number | null) => void,
+ *   onTextChange?: (id: string, text: string, projectId?: number | null) => void,
+ *   onSubtaskDone?: (subtaskId: string, done: boolean, parentId: string, projectId?: number | null, text?: string) => void,
+ *   onSubtaskAdded?: (parentId: string, item: { id: string, text: string, done: boolean }, projectId?: number | null) => void,
+ * }} opts
  */
 export function openRandomTaskPicker(opts) {
-  const { root, onDone, onTextChange } = opts;
+  const { root, onDone, onTextChange, onSubtaskDone, onSubtaskAdded } = opts;
 
   /** @type {string[]} */
   let priorities = [];
@@ -866,6 +1076,8 @@ export function openRandomTaskPicker(opts) {
           data: j,
           closeCard: cardShell.close,
           onTextChange,
+          onSubtaskDone,
+          onSubtaskAdded,
           onWaitingReady: (waiting) => {
             flushCurrentWaiting = () => waiting.flush();
           },

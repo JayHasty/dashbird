@@ -18,6 +18,7 @@ import {
 import { fetchNormalizedEventFromUrl } from '../lib/events-finder-public-pages.js';
 import { assertPublicHttpUrl } from '../lib/public-http-url.js';
 import { buildEventLogistics } from '../lib/events-finder-travel-logistics.js';
+import { loadEventsFinderCriteria } from '../lib/events-finder-criteria-store.js';
 
 const router = Router();
 router.use(express.json({ limit: '256kb' }));
@@ -41,6 +42,7 @@ function packItem(eventId, notable) {
     ticketUrl: notable?.ticketUrl ?? null,
     notes: notable?.notes ?? null,
     planningNotes: notable?.planningNotes ?? null,
+    tripPlanning: notable?.tripPlanning ?? null,
     overrides: notable?.overrides || {},
     manualEdit: notable?.manualEdit === true,
     updatedAt: notable?.updatedAt ?? null,
@@ -82,7 +84,15 @@ router.get('/:id/logistics', async (req, res) => {
       const n = store[String(ev.id || '')];
       return n ? applyNotableToEvent(ev, n) : ev;
     });
-    const logistics = buildEventLogistics(merged, catalog);
+    const criteria = await loadEventsFinderCriteria();
+    const logistics = buildEventLogistics(merged, catalog, {
+      taste: {
+        lookFor: criteria.lookFor,
+        skip: criteria.skip,
+        blacklist: criteria.blacklist,
+      },
+      tripPlanning: notable?.tripPlanning,
+    });
     res.setHeader('Cache-Control', 'private, no-store');
     res.json(logistics);
   } catch (e) {
@@ -211,7 +221,7 @@ router.get('/:id', async (req, res) => {
 
 /**
  * PATCH /:id — set notable flag + metadata / overrides.
- * Body: { notable?, reminderLeadWeeks?, earlyBird*, ticket*, notes?, planningNotes?, overrides?, applyOverridesToCatalog? }
+ * Body: { notable?, reminderLeadWeeks?, earlyBird*, ticket*, notes?, planningNotes?, tripPlanning?, overrides?, applyOverridesToCatalog? }
  */
 router.patch('/:id', async (req, res) => {
   try {
@@ -250,6 +260,9 @@ router.patch('/:id', async (req, res) => {
       'planningNotes',
     ]) {
       if (body[key] !== undefined) patch[key] = body[key];
+    }
+    if (body.tripPlanning !== undefined) {
+      patch.tripPlanning = body.tripPlanning;
     }
     if (body.overrides !== undefined) {
       patch.overrides = body.overrides;

@@ -43,6 +43,7 @@ const SEEN_CAP = 600;
  *   id: string,
  *   gmailQuery: string,
  *   homepageUrl: string,
+ *   sitePassword?: string,
  *   eventMatchers: Array<{ pattern: RegExp, name: string }>,
  * }} ProducerRule
  */
@@ -52,10 +53,12 @@ export const PRODUCER_RULES = [
   {
     id: 'take3',
     gmailQuery: 'newer_than:120d from:take3presents.com',
-    homepageUrl: 'https://take3presents.com/',
+    homepageUrl: 'https://www.take3presents.com/',
+    // Published on take3presents.com waiver; unlocks Squarespace gate for research.
+    sitePassword: 'sasquatch',
     eventMatchers: [
       { pattern: /\broom\s+service\b/i, name: 'Room Service' },
-      { pattern: /\bbig\s+stick\s+shindig\b/i, name: 'Big Stick Shindig' },
+      { pattern: /\bbig\s+stick(?:\s+shindig)?\b/i, name: 'Big Stick Shindig' },
     ],
   },
 ];

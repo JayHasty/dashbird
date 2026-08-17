@@ -1176,6 +1176,26 @@ export function mountEventsFinder(root) {
       item.planningNotes || '',
       true,
     );
+    const logisticsStatus = document.createElement('p');
+    logisticsStatus.className = 'events-finder__big-events-msg muted';
+    logisticsStatus.hidden = true;
+    logisticsStatus.textContent = 'Autosaves';
+    wrap.append(logisticsStatus);
+    if (logisticsI instanceof HTMLTextAreaElement) {
+      const slug = String(item.slug || '').trim();
+      bindLogisticsAutosave(logisticsI, {
+        statusEl: logisticsStatus,
+        save: async (text) => {
+          if (!slug) throw new Error('missing_slug');
+          await saveBigEventPlanningNotes(slug, text);
+          item.planningNotes = String(text || '').trim() || null;
+        },
+        onSaved: () => {
+          void refreshBigEventsFromStore();
+          void loadEvents({ catalogOnly: true, quiet: true });
+        },
+      });
+    }
     const leadI = field(
       'Remind me (days before)',
       'text',
@@ -1396,6 +1416,124 @@ export function mountEventsFinder(root) {
     }
   }
 
+  const LOGISTICS_AUTOSAVE_MS = 450;
+
+  /**
+   * @param {unknown} notes
+   * @param {unknown} [tripPlanning]
+   * @returns {boolean}
+   */
+  function hasLogisticsNotes(notes, tripPlanning = null) {
+    if (String(notes || '').trim()) return true;
+    if (tripPlanning && typeof tripPlanning === 'object') {
+      return Object.values(tripPlanning).some((v) => String(v || '').trim());
+    }
+    return false;
+  }
+
+  /**
+   * Warn before skipping an event that has logistics notes.
+   * @param {object} item
+   * @returns {boolean}
+   */
+  function confirmSkipDespiteLogistics(item) {
+    if (!hasLogisticsNotes(item?.planningNotes, item?.tripPlanning)) return true;
+    return window.confirm(
+      'This event has logistics notes saved (packing, stays, flights, etc.). Skip it anyway?',
+    );
+  }
+
+  /**
+   * Debounced autosave for logistics textareas (server-backed, phone-synced).
+   * @param {HTMLTextAreaElement} ta
+   * @param {{
+   *   save: (text: string) => Promise<void>,
+   *   statusEl?: HTMLElement | null,
+   *   onSaved?: (text: string) => void,
+   *   debounceMs?: number,
+   * }} opts
+   */
+  function bindLogisticsAutosave(ta, opts) {
+    const debounceMs = opts.debounceMs ?? LOGISTICS_AUTOSAVE_MS;
+    let timer = /** @type {ReturnType<typeof setTimeout> | null} */ (null);
+    let inFlight = false;
+    let again = false;
+    let lastAck = ta.value;
+    let destroyed = false;
+
+    function setStatus(text, kind) {
+      if (!opts.statusEl) return;
+      opts.statusEl.hidden = !text;
+      opts.statusEl.textContent = text || '';
+      opts.statusEl.className =
+        kind === 'error'
+          ? 'events-finder__big-events-msg events-finder__big-events-msg--error'
+          : 'events-finder__big-events-msg muted';
+    }
+
+    async function flush() {
+      if (destroyed) return;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      const text = ta.value;
+      if (text === lastAck) return;
+      if (inFlight) {
+        again = true;
+        return;
+      }
+      inFlight = true;
+      setStatus('Saving…');
+      try {
+        await opts.save(text);
+        lastAck = text;
+        opts.onSaved?.(text);
+        setStatus('Saved');
+      } catch (e) {
+        setStatus(String(e?.message || e), 'error');
+      } finally {
+        inFlight = false;
+        if (again) {
+          again = false;
+          void flush();
+        }
+      }
+    }
+
+    const onInput = () => {
+      setStatus('Saving…');
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void flush(), debounceMs);
+    };
+    ta.addEventListener('input', onInput);
+    ta.addEventListener('blur', () => void flush());
+
+    return {
+      flush,
+      destroy() {
+        destroyed = true;
+        ta.removeEventListener('input', onInput);
+        if (timer) clearTimeout(timer);
+      },
+    };
+  }
+
+  /**
+   * Persist logistics notes for a producer / big-event record.
+   * @param {string} slug
+   * @param {string} text
+   */
+  async function saveBigEventPlanningNotes(slug, text) {
+    const res = await fetch(`/api/events-finder/big-events/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planningNotes: String(text || '').trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  }
+
   /**
    * POST a big-event feed-card action (snooze / skip / restore), then refresh
    * the tracked table + feed so the card disappears (or returns) immediately.
@@ -1405,6 +1543,7 @@ export function mountEventsFinder(root) {
   async function bigEventCardAction(item, action) {
     const slug = String(item?.slug || '').trim();
     if (!slug) return;
+    if (action === 'skip' && !confirmSkipDespiteLogistics(item)) return;
     try {
       const res = await fetch(
         `/api/events-finder/big-events/${encodeURIComponent(slug)}/${action}`,
@@ -2973,6 +3112,7 @@ export function mountEventsFinder(root) {
     if (!id) return;
     if (!filtersReady) return;
     if (opts.series && !String(ev.seriesKey || '').trim()) return;
+    if (!confirmSkipDespiteLogistics(ev)) return;
     // Zoom/pan stay put via mapDidInitialFit (do not touch mapViewBeforePopup —
     // that stash is only for restoring the pre-pin-popup view).
     const record = skippedRecordFromEventLocal(ev, { series: Boolean(opts.series) });
@@ -3543,13 +3683,18 @@ export function mountEventsFinder(root) {
     const logisticsBtn = document.createElement('button');
     logisticsBtn.type = 'button';
     logisticsBtn.className = 'events-finder__card-action events-finder__card-action--logistics';
-    logisticsBtn.title = 'Logistics notes — flights, lodging, packing';
-    logisticsBtn.setAttribute('aria-label', 'Edit logistics notes');
-    logisticsBtn.textContent = item.planningNotes ? 'Logistics ✓' : 'Logistics';
+    logisticsBtn.title = 'Logistics — packing, stays, flights, prep';
+    logisticsBtn.setAttribute('aria-label', 'Edit logistics');
+    const hasLogistics = Boolean(
+      item.planningNotes
+      || (item.tripPlanning
+        && Object.values(item.tripPlanning).some((v) => String(v || '').trim())),
+    );
+    logisticsBtn.textContent = hasLogistics ? 'Logistics ✓' : 'Logistics';
     logisticsBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      openProducerLogisticsDialog(item);
+      void openPlanningLogisticsPopout(item, { producer: true });
     });
 
     actions.append(logisticsBtn, snoozeBtn, skipBtn, calBtn);
@@ -3565,79 +3710,480 @@ export function mountEventsFinder(root) {
   }
 
   /**
-   * Checkbox-style logistics notes for a producer event (flights, lodging…).
    * @param {object} item
    */
   function openProducerLogisticsDialog(item) {
-    const backdrop = document.createElement('div');
-    backdrop.className = 'events-finder__correct-backdrop';
-    const panel = document.createElement('div');
-    panel.className = 'events-finder__correct-dialog';
-    panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-modal', 'true');
-
-    const title = document.createElement('h3');
-    title.className = 'events-finder__correct-title';
-    title.textContent = 'Logistics notes';
-    const hint = document.createElement('p');
-    hint.className = 'events-finder__correct-hint muted';
-    hint.textContent = `${item.title || item.query || 'Producer'} — accommodations, flights, packing, etc.`;
-
-    const ta = document.createElement('textarea');
-    ta.className = 'events-finder__correct-input';
-    ta.rows = 8;
-    ta.placeholder = 'Flights…\nLodging…\nOther…';
-    ta.value = item.planningNotes ? String(item.planningNotes) : '';
-    ta.autocomplete = 'off';
-
-    const actions = document.createElement('div');
-    actions.className = 'events-finder__correct-actions';
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = 'events-finder__big-events-again';
-    cancel.textContent = 'Cancel';
-    const submit = document.createElement('button');
-    submit.type = 'button';
-    submit.className = 'events-finder__big-events-confirm';
-    submit.textContent = 'Save';
-    const err = document.createElement('p');
-    err.className = 'events-finder__correct-err muted';
-    err.hidden = true;
-    actions.append(cancel, submit);
-    panel.append(title, hint, ta, actions, err);
-    backdrop.append(panel);
-    document.body.append(backdrop);
-    ta.focus();
-
-    const close = () => backdrop.remove();
-    cancel.addEventListener('click', close);
-    backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop) close();
-    });
-    submit.addEventListener('click', async () => {
-      submit.disabled = true;
-      try {
-        const res = await fetch(
-          `/api/events-finder/big-events/${encodeURIComponent(item.slug)}`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ planningNotes: ta.value.trim() }),
-          },
-        );
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        close();
-        void refreshBigEventsFromStore();
-        void loadEvents({ catalogOnly: true, quiet: true });
-      } catch (e) {
-        submit.disabled = false;
-        err.hidden = false;
-        err.textContent = `Could not save: ${String(e?.message || e)}`;
-      }
-    });
+    void openPlanningLogisticsPopout(item, { producer: true });
   }
 
+  /** @type {HTMLElement | null} */
+  let nearbyFeedBackdrop = null;
+  /** @type {((e: KeyboardEvent) => void) | null} */
+  let nearbyFeedKeyHandler = null;
+
+  function closeNearbyEventsFeedPopout() {
+    if (nearbyFeedKeyHandler) {
+      document.removeEventListener('keydown', nearbyFeedKeyHandler);
+      nearbyFeedKeyHandler = null;
+    }
+    if (nearbyFeedBackdrop) {
+      nearbyFeedBackdrop.remove();
+      nearbyFeedBackdrop = null;
+    }
+  }
+
+  /**
+   * Pop-out event feed (sidebar card format) for nearby suggestions + area feeds.
+   * @param {{
+   *   title?: string,
+   *   city?: string,
+   *   events?: object[],
+   *   byWindow?: { before?: object[], during?: object[], after?: object[] },
+   *   areaFeeds?: { label: string, detail: string, url: string }[],
+   * }} pack
+   */
+  function openNearbyEventsFeedPopout(pack) {
+    closeNearbyEventsFeedPopout();
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'events-finder__nearby-feed-backdrop';
+    const shell = document.createElement('div');
+    shell.className = 'events-finder__nearby-feed-window';
+    shell.setAttribute('role', 'dialog');
+    shell.setAttribute('aria-modal', 'true');
+
+    const bar = document.createElement('div');
+    bar.className = 'events-finder__nearby-feed-bar';
+    const title = document.createElement('h2');
+    title.className = 'events-finder__nearby-feed-title';
+    title.textContent = pack.title || 'Events nearby';
+    const mapBtn = document.createElement('button');
+    mapBtn.type = 'button';
+    mapBtn.className = 'events-finder__nearby-feed-map';
+    mapBtn.textContent = 'Map';
+    mapBtn.title = 'Show these events on a map';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'events-finder__nearby-feed-close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.title = 'Close';
+    closeBtn.innerHTML =
+      '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M4 4l8 8M12 4l-8 8"/></svg>';
+    bar.append(title, mapBtn, closeBtn);
+
+    const body = document.createElement('div');
+    body.className = 'events-finder__nearby-feed-body';
+
+    const events = Array.isArray(pack.events) ? pack.events : [];
+    const byWindow = pack.byWindow || {
+      before: events.filter((e) => e.window === 'before'),
+      during: events.filter((e) => e.window === 'during'),
+      after: events.filter((e) => e.window === 'after'),
+    };
+
+    if (Array.isArray(pack.areaFeeds) && pack.areaFeeds.length) {
+      const feedsH = document.createElement('h3');
+      feedsH.className = 'events-finder__notable-subtitle';
+      feedsH.textContent = pack.city
+        ? `Popular event feeds · ${pack.city}`
+        : 'Popular event feeds in the area';
+      body.append(feedsH);
+      const feedsUl = document.createElement('ul');
+      feedsUl.className = 'events-finder__logistics-list';
+      for (const feed of pack.areaFeeds) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = String(feed.url || '#');
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = String(feed.label || 'Feed');
+        const d = document.createElement('p');
+        d.className = 'muted';
+        d.textContent = String(feed.detail || '');
+        li.append(a, d);
+        feedsUl.append(li);
+      }
+      body.append(feedsUl);
+    }
+
+    const sections = [
+      { key: 'before', label: 'One week before' },
+      { key: 'during', label: 'During the trip' },
+      { key: 'after', label: 'One week after' },
+    ];
+    let anyCards = false;
+    for (const sec of sections) {
+      const list = Array.isArray(byWindow[sec.key]) ? byWindow[sec.key] : [];
+      if (!list.length) continue;
+      anyCards = true;
+      const h = document.createElement('h3');
+      h.className = 'events-finder__notable-subtitle';
+      h.textContent = `${sec.label} (${list.length})`;
+      body.append(h);
+      const listEl = document.createElement('div');
+      listEl.className = 'events-finder__list events-finder__list--nearby-feed';
+      for (const ev of list) {
+        listEl.append(buildEventCard(ev, {}));
+      }
+      body.append(listEl);
+    }
+
+    if (!anyCards) {
+      const none = document.createElement('p');
+      none.className = 'muted';
+      none.textContent = pack.city
+        ? `No taste-matching catalog events found in ${pack.city} for that travel window yet.`
+        : 'No taste-matching catalog events found nearby for that travel window yet.';
+      body.append(none);
+    }
+
+    shell.append(bar, body);
+    backdrop.append(shell);
+    document.body.append(backdrop);
+    nearbyFeedBackdrop = backdrop;
+
+    const finishClose = () => closeNearbyEventsFeedPopout();
+    closeBtn.addEventListener('click', finishClose);
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) finishClose();
+    });
+    nearbyFeedKeyHandler = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        finishClose();
+      }
+    };
+    document.addEventListener('keydown', nearbyFeedKeyHandler);
+
+    mapBtn.addEventListener('click', () => {
+      openMapWindowForEvents(events, pack.title || 'Nearby events map');
+    });
+    closeBtn.focus();
+  }
+
+  /**
+   * Open the events map focused on a specific list (e.g. nearby suggestions).
+   * @param {object[]} events
+   * @param {string} [mapTitle]
+   */
+  function openMapWindowForEvents(events, mapTitle = 'Events map') {
+    const list = Array.isArray(events) ? events : [];
+    const apply = () => {
+      if (!mapBackdrop) return;
+      mapBackdrop.style.zIndex = '80';
+      const titleEl = mapBackdrop.querySelector('.events-finder__map-window-title');
+      if (titleEl) titleEl.textContent = mapTitle;
+      mapDidInitialFit = false;
+      void syncMap(list, lastEventsPayload);
+    };
+    if (mapBackdrop) {
+      apply();
+      return;
+    }
+    openMapWindow();
+    // openMapWindow kicks off syncMap(lastFilteredEvents) — replace with this list.
+    apply();
+  }
+
+  /**
+   * @param {object} ev
+   * @param {{ producer?: boolean }} [opts]
+   */
+  async function openPlanningLogisticsPopout(ev, opts = {}) {
+    const producer = opts.producer === true || ev?.producer === true || ev?.conferenceWatch === true;
+    const eventId = String(ev?.id || '').trim();
+    const slug = String(ev?.slug || '').trim();
+    const body = document.createElement('div');
+    body.className = 'events-finder__logistics';
+    const loading = document.createElement('p');
+    loading.className = 'muted';
+    loading.textContent = 'Loading planning & logistics…';
+    body.append(loading);
+
+    openConferencePopout({
+      title: 'Planning & logistics',
+      body,
+    });
+
+    try {
+      let data;
+      if (producer) {
+        if (!slug) throw new Error('missing_slug');
+        const res = await fetch(`/api/events-finder/big-events/${encodeURIComponent(slug)}/logistics`, {
+          cache: 'no-store',
+        });
+        data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+      } else {
+        if (!ev.notable) {
+          await patchNotable(eventId, { notable: true, reminderLeadWeeks: 4 });
+        }
+        const res = await fetch(`/api/events-finder/notable/${encodeURIComponent(eventId)}/logistics`, {
+          cache: 'no-store',
+        });
+        data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      body.replaceChildren();
+
+      const head = document.createElement('h3');
+      head.className = 'events-finder__conference-detail-title';
+      head.textContent = String(ev.title || ev.query || 'Event');
+      body.append(head);
+
+      const whenEl = document.createElement('p');
+      whenEl.className = 'events-finder__conference-detail-when';
+      whenEl.textContent = [
+        formatWhen(ev.start) || ev.whenLabel || 'Date TBD',
+        ev.city || ev.placeLabel || '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      body.append(whenEl);
+
+      const dist = document.createElement('p');
+      dist.className = 'events-finder__logistics-dist';
+      if (data.milesFromBay != null) {
+        dist.textContent = data.outsideBay
+          ? `${data.milesFromBay} mi from the Bay Area — travel planning suggested.`
+          : `${data.milesFromBay} mi from the Bay Area centroid.`;
+      } else {
+        dist.textContent = producer
+          ? 'Add a city (or lat/lon) for map + travel suggestions.'
+          : 'Location not geocoded yet — add lat/lon in Notable overrides for map + travel.';
+        dist.classList.add('muted');
+      }
+      body.append(dist);
+
+      const mapEl = document.createElement('div');
+      mapEl.className = 'events-finder__logistics-map';
+      body.append(mapEl);
+      if (data.map?.lat != null && data.map?.lon != null) {
+        try {
+          const L = await loadLeaflet();
+          const map = L.map(mapEl, { zoomControl: true, attributionControl: true });
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap',
+          }).addTo(map);
+          const latlng = [data.map.lat, data.map.lon];
+          L.marker(latlng).addTo(map).bindPopup(String(data.map.label || 'Event'));
+          map.setView(latlng, data.outsideBay ? 6 : 11);
+          setTimeout(() => map.invalidateSize(), 80);
+        } catch {
+          mapEl.textContent = 'Map unavailable.';
+          mapEl.classList.add('muted');
+        }
+      } else {
+        mapEl.textContent = 'No map coordinates for this event.';
+        mapEl.classList.add('muted');
+      }
+
+      function linkSection(titleText, items) {
+        if (!Array.isArray(items) || !items.length) return;
+        const h = document.createElement('h4');
+        h.className = 'events-finder__notable-subtitle';
+        h.textContent = titleText;
+        body.append(h);
+        const ul = document.createElement('ul');
+        ul.className = 'events-finder__logistics-list';
+        for (const it of items) {
+          const li = document.createElement('li');
+          const a = document.createElement('a');
+          a.href = String(it.url || '#');
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = String(it.label || 'Link');
+          const d = document.createElement('p');
+          d.className = 'muted';
+          d.textContent = String(it.detail || '');
+          li.append(a, d);
+          ul.append(li);
+        }
+        body.append(ul);
+      }
+
+      if (data.outsideBay && data.nearestAirport) {
+        const ap = document.createElement('p');
+        ap.className = 'events-finder__logistics-airport';
+        ap.textContent = `Nearest international airport: ${data.nearestAirport.name} (${data.nearestAirport.code}) — ${data.nearestAirport.miles} mi from venue.`;
+        body.append(ap);
+        linkSection('From the airport', data.transportFromAirport);
+      }
+
+      linkSection('Flight search links', data.flights);
+      linkSection('Stay search links', data.accommodations);
+      linkSection('Other considerations', data.otherConsiderations);
+
+      const tp = data.tripPlanning || ev.tripPlanning || {};
+      /** @type {Record<string, string>} */
+      const draft = {
+        packingList: String(tp.packingList || ''),
+        accommodations: String(tp.accommodations || ''),
+        flightsTransport: String(tp.flightsTransport || ''),
+        beforeTrip: String(tp.beforeTrip || ''),
+        notes: String(tp.notes || data.planningNotes || ev.planningNotes || ''),
+      };
+
+      const fields = [
+        {
+          key: 'packingList',
+          label: 'Packing list',
+          placeholder: 'One item per line…\nPassport / ID\nTickets\nChargers\nLayers for weather',
+          rows: 5,
+        },
+        {
+          key: 'accommodations',
+          label: 'Accommodations',
+          placeholder: 'Hotel / Airbnb name, address, confirmation #, check-in…',
+          rows: 4,
+        },
+        {
+          key: 'flightsTransport',
+          label: 'Flights / transport',
+          placeholder: 'Outbound / return flights, ground transport, rental car…',
+          rows: 4,
+        },
+        {
+          key: 'beforeTrip',
+          label: 'Things to do before the trip',
+          placeholder: 'Book flights\nBook lodging\nCheck weather\nNotify work / house sit…',
+          rows: 5,
+        },
+        {
+          key: 'notes',
+          label: 'Notes',
+          placeholder: 'Anything else for this trip…',
+          rows: 3,
+        },
+      ];
+
+      const tripStatus = document.createElement('p');
+      tripStatus.className = 'events-finder__big-events-msg muted';
+      tripStatus.hidden = true;
+
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let tripTimer = null;
+      let tripInFlight = false;
+      let tripAgain = false;
+      let tripAck = JSON.stringify(draft);
+
+      async function saveTripPlanning() {
+        const payload = {
+          packingList: draft.packingList.trim() || null,
+          accommodations: draft.accommodations.trim() || null,
+          flightsTransport: draft.flightsTransport.trim() || null,
+          beforeTrip: draft.beforeTrip.trim() || null,
+          notes: draft.notes.trim() || null,
+        };
+        const serialized = JSON.stringify(payload);
+        if (serialized === tripAck) return;
+        if (tripInFlight) {
+          tripAgain = true;
+          return;
+        }
+        tripInFlight = true;
+        tripStatus.hidden = false;
+        tripStatus.textContent = 'Saving…';
+        tripStatus.className = 'events-finder__big-events-msg muted';
+        try {
+          if (producer) {
+            const res = await fetch(`/api/events-finder/big-events/${encodeURIComponent(slug)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tripPlanning: payload }),
+            });
+            const out = await res.json().catch(() => ({}));
+            if (!res.ok || !out.ok) throw new Error(out.error || `HTTP ${res.status}`);
+            ev.tripPlanning = payload;
+            ev.planningNotes = out.item?.planningNotes ?? ev.planningNotes;
+          } else {
+            await patchNotable(eventId, { notable: true, tripPlanning: payload });
+            ev.tripPlanning = payload;
+            ev.planningNotes = payload.notes;
+          }
+          tripAck = serialized;
+          tripStatus.textContent = 'Saved';
+          void (producer ? refreshBigEventsFromStore() : loadEvents({ catalogOnly: true, quiet: true }));
+        } catch (e) {
+          tripStatus.className = 'events-finder__big-events-msg events-finder__big-events-msg--error';
+          tripStatus.textContent = String(e?.message || e);
+        } finally {
+          tripInFlight = false;
+          if (tripAgain) {
+            tripAgain = false;
+            void saveTripPlanning();
+          }
+        }
+      }
+
+      function scheduleTripSave() {
+        tripStatus.hidden = false;
+        tripStatus.textContent = 'Saving…';
+        tripStatus.className = 'events-finder__big-events-msg muted';
+        if (tripTimer) clearTimeout(tripTimer);
+        tripTimer = setTimeout(() => void saveTripPlanning(), LOGISTICS_AUTOSAVE_MS);
+      }
+
+      for (const field of fields) {
+        const lab = document.createElement('label');
+        lab.className = 'events-finder__notable-field events-finder__notable-field--wide';
+        const span = document.createElement('span');
+        span.className = 'events-finder__notable-label';
+        span.textContent = field.label;
+        const ta = document.createElement('textarea');
+        ta.className = 'events-finder__notable-textarea';
+        ta.rows = field.rows;
+        ta.placeholder = field.placeholder;
+        ta.value = draft[field.key];
+        ta.addEventListener('input', () => {
+          draft[field.key] = ta.value;
+          scheduleTripSave();
+        });
+        ta.addEventListener('blur', () => void saveTripPlanning());
+        lab.append(span, ta);
+        body.append(lab);
+      }
+      body.append(tripStatus);
+
+      const nearbyActions = document.createElement('div');
+      nearbyActions.className = 'events-finder__notable-actions';
+      const findNearbyBtn = document.createElement('button');
+      findNearbyBtn.type = 'button';
+      findNearbyBtn.className = 'events-finder__big-events-confirm';
+      findNearbyBtn.textContent = 'Find other events nearby';
+      findNearbyBtn.title =
+        'Suggest taste-matching events one week before, during, and one week after — plus popular city feeds';
+      findNearbyBtn.addEventListener('click', () => {
+        openNearbyEventsFeedPopout({
+          title: ev.city
+            ? `Nearby · ${ev.city}`
+            : `Nearby · ${ev.title || 'event'}`,
+          city: String(ev.city || data.map?.label || '').trim(),
+          events: Array.isArray(data.nearbyEvents) ? data.nearbyEvents : [],
+          byWindow: data.nearbyByWindow,
+          areaFeeds: Array.isArray(data.areaFeeds) ? data.areaFeeds : [],
+        });
+      });
+      nearbyActions.append(findNearbyBtn);
+      body.append(nearbyActions);
+
+      const nearbyHint = document.createElement('p');
+      nearbyHint.className = 'muted events-finder__notable-hint';
+      const nearbyCount = Array.isArray(data.nearbyEvents) ? data.nearbyEvents.length : 0;
+      nearbyHint.textContent = nearbyCount
+        ? `${nearbyCount} catalog event${nearbyCount === 1 ? '' : 's'} already match your taste in this city/window.`
+        : 'Searches your catalog by city + taste for one week before, during, and one week after.';
+      body.append(nearbyHint);
+    } catch (e) {
+      body.replaceChildren();
+      const err = document.createElement('p');
+      err.className = 'events-finder__big-events-msg events-finder__big-events-msg--error';
+      err.textContent = String(e?.message || e);
+      body.append(err);
+    }
+  }
 
   /**
    * @param {string} eventId
@@ -3886,188 +4432,6 @@ export function mountEventsFinder(root) {
       title: 'Notable event',
       body,
     });
-  }
-
-  /**
-   * @param {object} ev
-   */
-  async function openPlanningLogisticsPopout(ev) {
-    const eventId = String(ev?.id || '').trim();
-    const body = document.createElement('div');
-    body.className = 'events-finder__logistics';
-    const loading = document.createElement('p');
-    loading.className = 'muted';
-    loading.textContent = 'Loading planning & logistics…';
-    body.append(loading);
-
-    openConferencePopout({
-      title: 'Planning & logistics',
-      body,
-    });
-
-    try {
-      // Ensure notable so logistics notes can stick.
-      if (!ev.notable) {
-        await patchNotable(eventId, { notable: true, reminderLeadWeeks: 4 });
-      }
-      const res = await fetch(`/api/events-finder/notable/${encodeURIComponent(eventId)}/logistics`, {
-        cache: 'no-store',
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
-
-      body.replaceChildren();
-
-      const head = document.createElement('h3');
-      head.className = 'events-finder__conference-detail-title';
-      head.textContent = String(ev.title || 'Event');
-      body.append(head);
-
-      const dist = document.createElement('p');
-      dist.className = 'events-finder__logistics-dist';
-      if (data.milesFromBay != null) {
-        dist.textContent = data.outsideBay
-          ? `${data.milesFromBay} mi from the Bay Area — travel planning suggested.`
-          : `${data.milesFromBay} mi from the Bay Area centroid.`;
-      } else {
-        dist.textContent = 'Location not geocoded yet — add lat/lon in Notable overrides for map + travel.';
-        dist.classList.add('muted');
-      }
-      body.append(dist);
-
-      const mapEl = document.createElement('div');
-      mapEl.className = 'events-finder__logistics-map';
-      body.append(mapEl);
-      if (data.map?.lat != null && data.map?.lon != null) {
-        try {
-          const L = await ensureLeaflet();
-          const map = L.map(mapEl, { zoomControl: true, attributionControl: true });
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '&copy; OpenStreetMap',
-          }).addTo(map);
-          const latlng = [data.map.lat, data.map.lon];
-          L.marker(latlng).addTo(map).bindPopup(String(data.map.label || 'Event'));
-          map.setView(latlng, data.outsideBay ? 6 : 11);
-          setTimeout(() => map.invalidateSize(), 80);
-        } catch {
-          mapEl.textContent = 'Map unavailable.';
-          mapEl.classList.add('muted');
-        }
-      } else {
-        mapEl.textContent = 'No map coordinates for this event.';
-        mapEl.classList.add('muted');
-      }
-
-      function linkSection(titleText, items) {
-        if (!Array.isArray(items) || !items.length) return;
-        const h = document.createElement('h4');
-        h.className = 'events-finder__notable-subtitle';
-        h.textContent = titleText;
-        body.append(h);
-        const ul = document.createElement('ul');
-        ul.className = 'events-finder__logistics-list';
-        for (const it of items) {
-          const li = document.createElement('li');
-          const a = document.createElement('a');
-          a.href = String(it.url || '#');
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          a.textContent = String(it.label || 'Link');
-          const d = document.createElement('p');
-          d.className = 'muted';
-          d.textContent = String(it.detail || '');
-          li.append(a, d);
-          ul.append(li);
-        }
-        body.append(ul);
-      }
-
-      if (data.outsideBay && data.nearestAirport) {
-        const ap = document.createElement('p');
-        ap.className = 'events-finder__logistics-airport';
-        ap.textContent = `Nearest international airport: ${data.nearestAirport.name} (${data.nearestAirport.code}) — ${data.nearestAirport.miles} mi from venue.`;
-        body.append(ap);
-        linkSection('From the airport', data.transportFromAirport);
-      }
-
-      linkSection('Suggested flights', data.flights);
-      linkSection('Accommodations', data.accommodations);
-      linkSection('Other considerations', data.otherConsiderations);
-
-      if (Array.isArray(data.nearbyEvents) && data.nearbyEvents.length) {
-        const h = document.createElement('h4');
-        h.className = 'events-finder__notable-subtitle';
-        h.textContent = 'Other events in the area';
-        body.append(h);
-        const ul = document.createElement('ul');
-        ul.className = 'events-finder__logistics-list';
-        for (const ne of data.nearbyEvents) {
-          const li = document.createElement('li');
-          const a = document.createElement(ne.url ? 'a' : 'span');
-          if (ne.url) {
-            a.href = String(ne.url);
-            a.target = '_blank';
-            a.rel = 'noopener noreferrer';
-          }
-          a.textContent = String(ne.title || 'Event');
-          const d = document.createElement('p');
-          d.className = 'muted';
-          d.textContent = [formatWhen(ne.start), ne.city, ne.miles != null ? `${ne.miles} mi` : '']
-            .filter(Boolean)
-            .join(' · ');
-          li.append(a, d);
-          ul.append(li);
-        }
-        body.append(ul);
-      } else {
-        const none = document.createElement('p');
-        none.className = 'muted';
-        none.textContent = 'No other catalog events found nearby in the same travel window.';
-        body.append(none);
-      }
-
-      const notesLab = document.createElement('label');
-      notesLab.className = 'events-finder__notable-field events-finder__notable-field--wide';
-      const notesSpan = document.createElement('span');
-      notesSpan.className = 'events-finder__notable-label';
-      notesSpan.textContent = 'Your planning notes';
-      const notesInput = document.createElement('textarea');
-      notesInput.className = 'events-finder__notable-textarea';
-      notesInput.rows = 3;
-      notesInput.value = String(data.planningNotes || ev.planningNotes || '');
-      notesLab.append(notesSpan, notesInput);
-      body.append(notesLab);
-
-      const saveNotes = document.createElement('button');
-      saveNotes.type = 'button';
-      saveNotes.className = 'events-finder__big-events-confirm';
-      saveNotes.textContent = 'Save notes';
-      const noteMsg = document.createElement('p');
-      noteMsg.className = 'events-finder__big-events-msg muted';
-      noteMsg.hidden = true;
-      saveNotes.addEventListener('click', async () => {
-        saveNotes.disabled = true;
-        try {
-          await patchNotable(eventId, { notable: true, planningNotes: notesInput.value.trim() || null });
-          noteMsg.hidden = false;
-          noteMsg.textContent = 'Saved.';
-        } catch (e) {
-          noteMsg.hidden = false;
-          noteMsg.className = 'events-finder__big-events-msg events-finder__big-events-msg--error';
-          noteMsg.textContent = String(e?.message || e);
-        } finally {
-          saveNotes.disabled = false;
-        }
-      });
-      body.append(saveNotes, noteMsg);
-    } catch (e) {
-      body.replaceChildren();
-      const err = document.createElement('p');
-      err.className = 'events-finder__big-events-msg events-finder__big-events-msg--error';
-      err.textContent = String(e?.message || e);
-      body.append(err);
-    }
   }
 
   /**

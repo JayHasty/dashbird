@@ -1,4 +1,4 @@
-# IRENA, ESMAP, and added watch orgs
+# IRENA, IEA, ESMAP, and added watch orgs
 
 Scored against `docs/recruiter-job-fit-brief.md`. Wired into Opportunity Watch where noted.
 
@@ -13,6 +13,18 @@ It is the dedicated **renewables knowledge/policy shop**: data, country advice, 
 **For Jay:** theme is on-brief (energy deployment + policy). **Hiring is Abu Dhabi/Bonn**, UN-style grades, and the official board is often empty. Treat as a **watch**, not a primary hunt.
 
 Careers: https://www.irena.org/About/Employment/Vacancies-and-recruitment
+
+---
+
+## What is IEA?
+
+**International Energy Agency** — intergovernmental org that operates as an **autonomous body within the OECD**. HQ **Paris**. Covers energy security, markets, clean transitions, electricity systems/grids, and country policy advice — broader than IRENA’s renewables-only mandate.
+
+Hiring runs through the joint OECD/IEA SmartRecruiters board (not a Greenhouse/Ashby API). Grades are OECD PAL bands; roles are almost always **Paris on-site**.
+
+**For Jay:** theme is on-brief (energy policy + grids/markets). **Location and OECD pay** usually fail the brief. Treat as a **watch** for rare senior/policy seats; skip junior PAL / temporary analyst posts.
+
+Careers: https://careers.smartrecruiters.com/OECD/iea · Help: https://www.iea.org/help-centre/careers
 
 ---
 
@@ -40,9 +52,10 @@ Careers: World Bank Energy / ESMAP via https://www.worldbank.org/en/about/career
 | **Elemental Impact** (was Excelerator) | SF/HI nonprofit investor: FOAK climate, policy, workforce | Partnerships + climate deployment; Bay-friendly | Program/portfolio/policy | Fundraising (Growth & Giving); HubSpot |
 | **GEAPP** | Rockefeller/IKEA/Bezos energy-access alliance (live Greenhouse) | Grids + energy access; NY/DC hybrid | US program / grids seats | Principal Giving; India/Brazil/Indonesia Directors |
 | **IRENA** | UN-observer renewables agency | Theme fits; location/pay usually fail | Rare US/remote senior programme seat | Official board often empty; Bonn P-staff |
+| **IEA** | OECD autonomous energy agency (Paris) | Theme fits; Paris + OECD bands usually fail | Rare senior energy/policy/grids seat | Junior PAL; temporary; Paris-only |
 | **Scale AI** | Data + eval + **gov AI deployment** (Donovan); DOE **Genesis Mission** | See below | AI Advisory Principal (SF); PS engagement if DC OK | Lab RLHF FDE; public-sector SWE |
 
-Live Greenhouse polling: Scale, Breakthrough, Elemental, GEAPP. Manual careers links (no board API): World Bank, IMF, Gates, Rockefeller, IRENA.
+Live Greenhouse polling: Scale, Breakthrough, Elemental, GEAPP. Manual careers links (no board API): World Bank, IMF, Gates, Rockefeller, IRENA, IEA.
 
 ---
 
@@ -67,6 +80,7 @@ Scale started as the **labeling/eval factory** for frontier labs. The interestin
 - GEAPP open board is fundraising + country-office Directors (India/Brazil/Indonesia) — location or family fail.
 - World Bank energy: [Senior Energy Specialist, Colombo](https://www.worldbank.org/en/about/careers) req38017 through 24 Aug — field office, pass.
 - IRENA official vacancies page empty; UNjobs mirrors are Bonn P-1/P-4/P-5 (location + cash fail).
+- IEA SmartRecruiters board is Paris junior/mid analyst seats (PAL4–PAL6) — location fail; watch only.
 - Gates / IMF / Rockefeller SVP Power: no Director-level US energy/ag/WASH seat that clears the brief (SVP Power is $475–525k and too senior).
 
 **Pass at Scale**

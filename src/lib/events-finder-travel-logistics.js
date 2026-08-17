@@ -4,6 +4,149 @@
  */
 import { haversineMiles } from './dashboard-geo.js';
 import { BAY_AREA_CITY_COORDS, resolveEventLatLon } from './events-finder-geo.js';
+import { scoreEventTaste } from './events-finder-taste.js';
+
+/**
+ * @typedef {{
+ *   packingList: string | null,
+ *   accommodations: string | null,
+ *   flightsTransport: string | null,
+ *   beforeTrip: string | null,
+ *   notes: string | null,
+ * }} TripPlanning
+ */
+
+/**
+ * @param {unknown} raw
+ * @param {number} [max]
+ * @returns {string | null}
+ */
+function tripField(raw, max = 4000) {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  return s.slice(0, max);
+}
+
+/**
+ * Structured trip logistics fields (packing, stays, flights, prep, notes).
+ * Falls back to legacy freeform `planningNotes` as Notes when structured notes are empty.
+ * @param {unknown} raw
+ * @param {string | null | undefined} [legacyPlanningNotes]
+ * @returns {TripPlanning}
+ */
+export function normalizeTripPlanning(raw, legacyPlanningNotes = null) {
+  const r = raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : {};
+  const notes =
+    tripField(r.notes, 4000)
+    || tripField(legacyPlanningNotes, 4000)
+    || tripField(r.planningNotes, 4000);
+  return {
+    packingList: tripField(r.packingList, 4000),
+    accommodations: tripField(r.accommodations, 4000),
+    flightsTransport: tripField(r.flightsTransport, 4000),
+    beforeTrip: tripField(r.beforeTrip, 4000),
+    notes,
+  };
+}
+
+/**
+ * @param {TripPlanning | null | undefined} tp
+ * @returns {boolean}
+ */
+export function tripPlanningHasContent(tp) {
+  if (!tp || typeof tp !== 'object') return false;
+  return Boolean(
+    tp.packingList || tp.accommodations || tp.flightsTransport || tp.beforeTrip || tp.notes,
+  );
+}
+
+/**
+ * Compact legacy string for badges / older clients.
+ * @param {TripPlanning} tp
+ * @returns {string | null}
+ */
+export function tripPlanningToLegacyNotes(tp) {
+  if (!tripPlanningHasContent(tp)) return null;
+  const parts = [];
+  if (tp.packingList) parts.push(`Packing:\n${tp.packingList}`);
+  if (tp.accommodations) parts.push(`Accommodations:\n${tp.accommodations}`);
+  if (tp.flightsTransport) parts.push(`Flights / transport:\n${tp.flightsTransport}`);
+  if (tp.beforeTrip) parts.push(`Before the trip:\n${tp.beforeTrip}`);
+  if (tp.notes) parts.push(`Notes:\n${tp.notes}`);
+  return parts.join('\n\n').slice(0, 4000);
+}
+
+/**
+ * Popular platform discover links for a city (no scrape — deep links only).
+ * @param {string | null | undefined} city
+ * @returns {{ label: string, detail: string, url: string, host: string }[]}
+ */
+export function suggestAreaEventFeeds(city) {
+  const place = String(city || '').trim();
+  if (!place) return [];
+  const q = encodeURIComponent(place);
+  return [
+    {
+      label: `Meetup · ${place}`,
+      detail: 'Popular groups and events near this city.',
+      url: `https://www.meetup.com/find/?location=${q}&source=EVENTS`,
+      host: 'meetup.com',
+    },
+    {
+      label: `Luma · ${place}`,
+      detail: 'Discover city calendars and upcoming Luma events.',
+      url: `https://lu.ma/discover?query=${q}`,
+      host: 'lu.ma',
+    },
+    {
+      label: `Eventbrite · ${place}`,
+      detail: 'Local Eventbrite listings around the trip dates.',
+      url: `https://www.eventbrite.com/d/united-states/events/?q=${q}`,
+      host: 'eventbrite.com',
+    },
+    {
+      label: `Google · events in ${place}`,
+      detail: 'Broad search for festivals, shows, and one-offs.',
+      url: `https://www.google.com/search?q=${encodeURIComponent(`events in ${place}`)}`,
+      host: 'google.com',
+    },
+  ];
+}
+
+/**
+ * Fold city names for soft equality (SF ≈ San Francisco is not handled — substring only).
+ * @param {unknown} a
+ * @param {unknown} b
+ */
+function sameCity(a, b) {
+  const na = String(a || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const nb = String(b || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (!na || !nb) return false;
+  return na === nb || na.includes(nb) || nb.includes(na);
+}
+
+/**
+ * @param {number} ms
+ * @returns {'before' | 'during' | 'after' | null}
+ */
+function classifyTravelWindow(ms, startMs, endMs, beforeMs, afterMs) {
+  if (!Number.isFinite(ms) || !Number.isFinite(startMs)) return null;
+  const end = Number.isFinite(endMs) && endMs >= startMs ? endMs : startMs + 24 * 60 * 60 * 1000;
+  if (ms >= startMs && ms <= end) return 'during';
+  if (ms >= beforeMs && ms < startMs) return 'before';
+  if (ms > end && ms <= afterMs) return 'after';
+  return null;
+}
 
 /** Approximate Bay Area centroid (SF downtown). */
 export const BAY_AREA_CENTER = Object.freeze({
@@ -258,49 +401,112 @@ export function buildTravelDeepLinks(event, geo) {
 }
 
 /**
- * Nearby catalog events within radiusMiles, overlapping ± windowDays of the target start.
+ * Nearby catalog events in the same city (preferred) or within radiusMiles,
+ * overlapping one week before → during → one week after the target trip.
+ * Taste-ranked when criteria are provided.
  * @param {object} target
  * @param {object[]} catalog
- * @param {{ radiusMiles?: number, windowDays?: number, limit?: number }} [opts]
+ * @param {{
+ *   radiusMiles?: number,
+ *   weekDays?: number,
+ *   limit?: number,
+ *   taste?: { lookFor?: string, skip?: string, blacklist?: string },
+ * }} [opts]
  */
 export function findNearbyEvents(target, catalog, opts = {}) {
   const radius = Number(opts.radiusMiles) > 0 ? Number(opts.radiusMiles) : 40;
-  const windowDays = Number(opts.windowDays) > 0 ? Number(opts.windowDays) : 3;
-  const limit = Number(opts.limit) > 0 ? Math.min(Number(opts.limit), 20) : 8;
+  const weekDays = Number(opts.weekDays) > 0 ? Number(opts.weekDays) : 7;
+  const limit = Number(opts.limit) > 0 ? Math.min(Number(opts.limit), 40) : 24;
   const tLat = Number(target?.lat);
   const tLon = Number(target?.lon);
+  const hasCoords = Number.isFinite(tLat) && Number.isFinite(tLon);
   const tStart = Date.parse(String(target?.start || ''));
+  const tEnd = Date.parse(String(target?.end || target?.start || ''));
   const targetId = String(target?.id || '');
-  if (!Number.isFinite(tLat) || !Number.isFinite(tLon)) return [];
+  const targetCity = String(target?.city || '').trim();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const beforeMs = Number.isFinite(tStart) ? tStart - weekDays * dayMs : NaN;
+  const afterMs = Number.isFinite(tEnd)
+    ? (Number.isFinite(tEnd) ? tEnd : tStart) + weekDays * dayMs
+    : Number.isFinite(tStart)
+      ? tStart + weekDays * dayMs
+      : NaN;
 
-  /** @type {{ event: object, miles: number }[]} */
+  /** @type {{ event: object, miles: number | null, window: 'before'|'during'|'after', sameCity: boolean, tasteScore: number, matchedLookFor: string[] }[]} */
   const scored = [];
   for (const ev of Array.isArray(catalog) ? catalog : []) {
     if (!ev || String(ev.id || '') === targetId) continue;
+    const cityMatch = targetCity ? sameCity(ev.city, targetCity) : false;
     const lat = Number(ev.lat);
     const lon = Number(ev.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    const miles = haversineMiles(tLat, tLon, lat, lon);
-    if (miles > radius) continue;
-    if (Number.isFinite(tStart)) {
-      const s = Date.parse(String(ev.start || ''));
-      if (Number.isFinite(s)) {
-        const deltaDays = Math.abs(s - tStart) / (24 * 60 * 60 * 1000);
-        if (deltaDays > windowDays) continue;
-      }
+    let miles = null;
+    if (hasCoords && Number.isFinite(lat) && Number.isFinite(lon)) {
+      miles = haversineMiles(tLat, tLon, lat, lon);
     }
-    scored.push({ event: ev, miles });
+    // Prefer same city; otherwise require coords within radius.
+    if (!cityMatch) {
+      if (miles == null || miles > radius) continue;
+    }
+
+    const s = Date.parse(String(ev.start || ''));
+    let window = /** @type {'before'|'during'|'after'|null} */ (null);
+    if (Number.isFinite(tStart) && Number.isFinite(s)) {
+      window = classifyTravelWindow(s, tStart, tEnd, beforeMs, afterMs);
+      if (!window) continue;
+    } else if (Number.isFinite(tStart)) {
+      // Undated candidates skip date filter only when same city.
+      if (!cityMatch) continue;
+      window = 'during';
+    } else {
+      window = 'during';
+    }
+
+    const taste = scoreEventTaste(ev, opts.taste || {});
+    if (!taste.ok) continue;
+
+    scored.push({
+      event: ev,
+      miles,
+      window,
+      sameCity: cityMatch,
+      tasteScore: taste.score,
+      matchedLookFor: taste.matchedLookFor,
+    });
   }
-  scored.sort((a, b) => a.miles - b.miles || String(a.event.start || '').localeCompare(String(b.event.start || '')));
-  return scored.slice(0, limit).map(({ event, miles }) => ({
+
+  const windowRank = { before: 0, during: 1, after: 2 };
+  scored.sort((a, b) => {
+    if (b.tasteScore !== a.tasteScore) return b.tasteScore - a.tasteScore;
+    if (a.sameCity !== b.sameCity) return a.sameCity ? -1 : 1;
+    if (windowRank[a.window] !== windowRank[b.window]) {
+      return windowRank[a.window] - windowRank[b.window];
+    }
+    const ma = a.miles == null ? 9999 : a.miles;
+    const mb = b.miles == null ? 9999 : b.miles;
+    if (ma !== mb) return ma - mb;
+    return String(a.event.start || '').localeCompare(String(b.event.start || ''));
+  });
+
+  return scored.slice(0, limit).map(({ event, miles, window, sameCity, tasteScore, matchedLookFor }) => ({
     id: event.id,
     title: event.title,
     start: event.start,
+    end: event.end || null,
     city: event.city,
     venue: event.venue,
     url: event.url,
-    miles: Math.round(miles * 10) / 10,
+    imageUrl: event.imageUrl || event.raw?.imageUrl || null,
+    description: event.description || null,
+    priceLabel: event.priceLabel || null,
+    lat: event.lat ?? null,
+    lon: event.lon ?? null,
+    source: event.source || null,
+    miles: miles != null ? Math.round(miles * 10) / 10 : null,
     notable: event.notable === true,
+    sameCity,
+    window,
+    tasteScore,
+    matchedLookFor,
   }));
 }
 
@@ -338,8 +544,12 @@ export function resolveLogisticsLatLon(event) {
  * Full logistics payload for one event.
  * @param {object} event
  * @param {object[]} catalog
+ * @param {{
+ *   taste?: { lookFor?: string, skip?: string, blacklist?: string },
+ *   tripPlanning?: unknown,
+ * }} [opts]
  */
-export function buildEventLogistics(event, catalog = []) {
+export function buildEventLogistics(event, catalog = [], opts = {}) {
   const coords = resolveLogisticsLatLon(event);
   const located = coords ? { ...event, lat: coords.lat, lon: coords.lon } : { ...event };
   const milesFromBay = milesFromBayArea(located.lat, located.lon);
@@ -350,10 +560,19 @@ export function buildEventLogistics(event, catalog = []) {
   const links = buildTravelDeepLinks(located, { milesFromBay, outsideBay, nearestAirport });
   const transport =
     outsideBay && nearestAirport ? airportTransportOptions(nearestAirport, located) : [];
-  const nearby = findNearbyEvents(located, catalog.map((ev) => {
-    const c = resolveLogisticsLatLon(ev);
-    return c ? { ...ev, lat: c.lat, lon: c.lon } : ev;
-  }));
+  const nearby = findNearbyEvents(
+    located,
+    catalog.map((ev) => {
+      const c = resolveLogisticsLatLon(ev);
+      return c ? { ...ev, lat: c.lat, lon: c.lon } : ev;
+    }),
+    { taste: opts.taste, weekDays: 7, radiusMiles: 40, limit: 24 },
+  );
+  const tripPlanning = normalizeTripPlanning(
+    opts.tripPlanning ?? event?.tripPlanning,
+    event?.planningNotes,
+  );
+  const city = String(located.city || '').trim();
 
   return {
     ok: true,
@@ -380,6 +599,13 @@ export function buildEventLogistics(event, catalog = []) {
     accommodations: links.stays,
     otherConsiderations: links.other,
     nearbyEvents: nearby,
-    planningNotes: event?.planningNotes || null,
+    nearbyByWindow: {
+      before: nearby.filter((e) => e.window === 'before'),
+      during: nearby.filter((e) => e.window === 'during'),
+      after: nearby.filter((e) => e.window === 'after'),
+    },
+    areaFeeds: suggestAreaEventFeeds(city),
+    tripPlanning,
+    planningNotes: tripPlanning.notes || event?.planningNotes || null,
   };
 }

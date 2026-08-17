@@ -4,6 +4,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  normalizeTripPlanning,
+  tripPlanningToLegacyNotes,
+} from './events-finder-travel-logistics.js';
 
 const PKG_ROOT = path.join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const CACHE_CAP = 80;
@@ -155,8 +159,12 @@ function normalizeRecord(raw) {
     // True when dates were estimated (+1 year) because no next-edition info exists.
     nextEditionEstimated: r.nextEditionEstimated === true,
     notes: String(r.notes || '').trim().slice(0, 400) || null,
-    // Freeform logistics (flights, lodging, packing) — not overwritten by research.
-    planningNotes: String(r.planningNotes || '').trim().slice(0, 4000) || null,
+    // Structured trip logistics (packing, stays, flights, prep, notes).
+    tripPlanning: normalizeTripPlanning(r.tripPlanning, r.planningNotes),
+    // Freeform logistics mirror — kept for badges / older clients.
+    planningNotes:
+      tripPlanningToLegacyNotes(normalizeTripPlanning(r.tripPlanning, r.planningNotes))
+      || (String(r.planningNotes || '').trim().slice(0, 4000) || null),
     // How many days before the event / sales to start reminding.
     // null = use the default heads-up window (~60 days).
     reminderLeadDays: normalizeLeadDays(r.reminderLeadDays),

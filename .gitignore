@@ -41,6 +41,7 @@ data/coolstuff-events-cache.json
 data/webpage-listings-events-cache.json
 data/events-finder-notable.json
 data/events-finder-series-watches.json
+data/events-finder-site-passwords.json
 data/luma-events-cache.json
 data/gcal-ics-events-cache.json
 data/telegram-events-offset.json

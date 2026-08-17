@@ -2,7 +2,7 @@
  * Floating daily scratch sticky — same chrome as the old DEV NOTES pad,
  * green theme. Highlight text and convert to bullets or checkboxes.
  * Checking a box strikes the row, then deletes it after 5s (uncheck to cancel).
- * Body autosaves to the server; position/collapse stay in localStorage.
+ * Body autosaves to /api/daily-scratch (shared with phone); position/collapse stay local.
  */
 import {
   DAILY_SCRATCH_VARIANT_ID,
@@ -96,9 +96,11 @@ export function mountDailyScratchSticky() {
 
   collapseBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    pad.patchState({ collapsed: !pad.getState().collapsed });
+    const nextCollapsed = !pad.getState().collapsed;
+    pad.patchState({ collapsed: nextCollapsed });
     pad.persistLocal();
     applyLayout();
+    if (!nextCollapsed) void pad.hydrateFromServer();
   });
 
   collapseBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -144,9 +146,5 @@ export function mountDailyScratchSticky() {
     pad.patchState(clampPosition(state.x, state.y));
     pad.persistLocal();
     applyLayout();
-  });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') pad.flushSave();
   });
 }

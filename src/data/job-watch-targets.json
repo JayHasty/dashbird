@@ -45,7 +45,7 @@
     },
     {
       "id": "bd-partnerships-agri-gdev",
-      "label": "Partnerships / GTM — agri or global development",
+      "label": "Partnerships / GTM \u2014 agri or global development",
       "priority": 2,
       "summary": "Only if JD emphasizes field partners, not MD/clinical research.",
       "matchAny": [
@@ -67,7 +67,7 @@
       "id": "bd-agriculture",
       "label": "Gates agriculture / smallholder",
       "priority": "watch",
-      "summary": "Best thematic fit — watch lane until a real seat appears.",
+      "summary": "Best thematic fit \u2014 watch lane until a real seat appears.",
       "matchAny": [
         "smallholder",
         "agriculture",
@@ -103,7 +103,7 @@
       "id": "startup-partnerships-lead",
       "label": "Startup Partnerships Lead",
       "priority": "queued",
-      "summary": "Queued cooldown burn — partnerships/GTM, not DevRel Evangelist. Confirm before submit.",
+      "summary": "Queued cooldown burn \u2014 partnerships/GTM, not DevRel Evangelist. Confirm before submit.",
       "matchAny": [
         "^startup partnerships lead$"
       ],
@@ -122,7 +122,7 @@
       "label": "Forward Deployed Engineer, Public Sector",
       "priority": 1,
       "kind": "Full-time",
-      "summary": "Closest Google analog to Applied AI Architect (IC), BD — field deployment for government/mission customers.",
+      "summary": "Closest Google analog to Applied AI Architect (IC), BD \u2014 field deployment for government/mission customers.",
       "matchAny": [
         "forward.?deployed engineer.*(public sector|government|state and local)",
         "forward.?deployed engineering",
@@ -157,7 +157,7 @@
       "label": "Google.org / social impact program",
       "priority": 2,
       "kind": "Full-time",
-      "summary": "Philanthropic arm — grants, AI for social good, fellowship program management.",
+      "summary": "Philanthropic arm \u2014 grants, AI for social good, fellowship program management.",
       "matchAny": [
         "google\\.org",
         "(social impact|social good|philanthrop).*(program|partnership|lead|manager|director)",
@@ -176,7 +176,7 @@
       "label": "AnthroKrishi / agriculture AI",
       "priority": "watch",
       "kind": "Full-time",
-      "summary": "Google's smallholder-agriculture lane — the closest match to the Gates agri thesis.",
+      "summary": "Google's smallholder-agriculture lane \u2014 the closest match to the Gates agri thesis.",
       "matchAny": [
         "anthrokrishi",
         "smallholder",
@@ -208,7 +208,7 @@
       "label": "Forward Deployed Engineer, Gov",
       "priority": 1,
       "kind": "Full-time",
-      "summary": "Closest OpenAI analog to Applied AI Architect (IC), BD — field deployment for government missions.",
+      "summary": "Closest OpenAI analog to Applied AI Architect (IC), BD \u2014 field deployment for government missions.",
       "matchAny": [
         "forward.?deployed engineer,?\\s*gov\\b",
         "forward.?deployed engineer.*(government|public sector)",
@@ -228,7 +228,7 @@
       "label": "AI Success Engineer, Government",
       "priority": 1,
       "kind": "Full-time",
-      "summary": "Customer/partner success motion for OpenAI for Government — closest to BD Success lanes.",
+      "summary": "Customer/partner success motion for OpenAI for Government \u2014 closest to BD Success lanes.",
       "matchAny": [
         "ai success engineer,?\\s*government",
         "ai support engineer,?\\s*government",
@@ -246,7 +246,7 @@
       "label": "Partner AI Deployment Engineer",
       "priority": 2,
       "kind": "Full-time",
-      "summary": "Partner-channel deployment engineering — GTM/implementation analog.",
+      "summary": "Partner-channel deployment engineering \u2014 GTM/implementation analog.",
       "matchAny": [
         "partner ai deployment engineer",
         "partner.?deployed"
@@ -262,7 +262,7 @@
       "label": "AI Success / Education",
       "priority": "watch",
       "kind": "Full-time",
-      "summary": "Education and campus success lanes — soft analog to Claude for Teachers / economic mobility.",
+      "summary": "Education and campus success lanes \u2014 soft analog to Claude for Teachers / economic mobility.",
       "matchAny": [
         "ai success engineer.?edu",
         "ai success engineer.?education",
@@ -281,7 +281,7 @@
       "label": "Academic / research partnerships",
       "priority": "watch",
       "kind": "Full-time",
-      "summary": "Academic research partnerships & programs — public-goods adjacent.",
+      "summary": "Academic research partnerships & programs \u2014 public-goods adjacent.",
       "matchAny": [
         "academic research partnerships",
         "campus leaders",
@@ -292,10 +292,10 @@
     {
       "id": "unops-gpa-policy-advisor",
       "source": "unops",
-      "label": "GPA Policy Advisor — energy in displacement",
+      "label": "GPA Policy Advisor \u2014 energy in displacement",
       "priority": 2,
       "kind": "Contract",
-      "summary": "Home-based UNOPS retainer: SDG7 energy access for displacement settings → policy → delivery. Possible vs brief (retainer ≠ $180k FTE).",
+      "summary": "Home-based UNOPS retainer: SDG7 energy access for displacement settings \u2192 policy \u2192 delivery. Possible vs brief (retainer \u2260 $180k FTE).",
       "matchAny": [
         "^policy advisor$",
         "policy advisor.*gpa",
@@ -309,7 +309,7 @@
       "label": "Climate Finance Senior Advisor (retainer)",
       "priority": "watch",
       "kind": "Contract",
-      "summary": "Home-based IICA-4 retainer for GCF/GEF pipeline — stretch; needs climate-finance specialist depth.",
+      "summary": "Home-based IICA-4 retainer for GCF/GEF pipeline \u2014 stretch; needs climate-finance specialist depth.",
       "matchAny": [
         "climate finance senior advisor"
       ],
@@ -321,7 +321,7 @@
       "label": "AI Advisory Principal",
       "priority": 2,
       "kind": "Full-time",
-      "summary": "SF/NYC: shape what enterprises should build in AI before delivery — closest Scale analog to applied-AI architecture without a staff-SWE bar.",
+      "summary": "SF/NYC: shape what enterprises should build in AI before delivery \u2014 closest Scale analog to applied-AI architecture without a staff-SWE bar.",
       "matchAny": [
         "ai advisory principal",
         "advisory principal"
@@ -337,7 +337,7 @@
       "label": "Public sector deployment / engagement",
       "priority": "watch",
       "kind": "Full-time",
-      "summary": "Gov AI deployment (Donovan / Genesis Mission). Often DC — location stretch; skip SWE/FDE software seats.",
+      "summary": "Gov AI deployment (Donovan / Genesis Mission). Often DC \u2014 location stretch; skip SWE/FDE software seats.",
       "matchAny": [
         "deployment strategist.*(washington|dc|public sector)",
         "engagement manager,?\\s*public sector",
@@ -364,7 +364,7 @@
       "label": "GRIDS / grid & energy deployment",
       "priority": 2,
       "kind": "Full-time",
-      "summary": "Breakthrough Energy GRIDS: planning barriers, grid tools, lab-to-market climate tech. Denver today — watch for Bay/remote.",
+      "summary": "Breakthrough Energy GRIDS: planning barriers, grid tools, lab-to-market climate tech. Denver today \u2014 watch for Bay/remote.",
       "matchAny": [
         "grid modeling",
         "grids",
@@ -384,7 +384,7 @@
       "label": "Climate programs / portfolio (not fundraising)",
       "priority": 2,
       "kind": "Full-time",
-      "summary": "Elemental Impact (née Excelerator): SF/HI catalytic capital + policy for FOAK climate. Skip Growth & Giving / HubSpot.",
+      "summary": "Elemental Impact (n\u00e9e Excelerator): SF/HI catalytic capital + policy for FOAK climate. Skip Growth & Giving / HubSpot.",
       "matchAny": [
         "program",
         "portfolio",
@@ -405,7 +405,7 @@
     {
       "id": "wb-energy-esmap",
       "source": "world-bank",
-      "label": "Energy / ESMAP (GG–GH)",
+      "label": "Energy / ESMAP (GG\u2013GH)",
       "priority": 2,
       "kind": "Full-time",
       "summary": "World Bank Energy GP + ESMAP: energy access, grids, efficiency. DC HQ; GG/GH can clear cash; skip field country offices.",
@@ -509,6 +509,34 @@
         "p-1",
         "intern",
         "assistant"
+      ]
+    },
+    {
+      "id": "iea-energy-policy",
+      "source": "iea",
+      "label": "Energy policy / electricity systems (not junior PAL)",
+      "priority": "watch",
+      "kind": "Full-time",
+      "summary": "IEA (OECD autonomous body, Paris): energy security, clean transitions, grids, markets. Theme fits; hiring is usually Paris and OECD pay bands. Watch for rare senior/policy seats; skip junior analyst / intern.",
+      "matchAny": [
+        "energy",
+        "electricity",
+        "power system",
+        "grid",
+        "clean energy",
+        "energy transition",
+        "renewable",
+        "policy analyst",
+        "programme",
+        "program"
+      ],
+      "excludeAny": [
+        "junior",
+        "intern",
+        "pal4",
+        "pal3",
+        "assistant",
+        "temporary"
       ]
     },
     {
@@ -651,7 +679,7 @@
           "location": "Home based",
           "kind": "Contract",
           "workMode": "Remote / home-based retainer",
-          "summary": "UNOPS TSU climate finance pipeline (GCF/GEF/AF). IICA-4 retainer through 20 Aug 2026. Stretch vs brief — finance specialist bar.",
+          "summary": "UNOPS TSU climate finance pipeline (GCF/GEF/AF). IICA-4 retainer through 20 Aug 2026. Stretch vs brief \u2014 finance specialist bar.",
           "postedAt": "2026-08-06T00:00:00.000Z"
         }
       ]
@@ -725,6 +753,14 @@
       "label": "IRENA",
       "type": "manual",
       "careersUiUrl": "https://www.irena.org/About/Employment/Vacancies-and-recruitment",
+      "candidates": false,
+      "jobs": []
+    },
+    {
+      "id": "iea",
+      "label": "IEA",
+      "type": "manual",
+      "careersUiUrl": "https://careers.smartrecruiters.com/OECD/iea",
       "candidates": false,
       "jobs": []
     }

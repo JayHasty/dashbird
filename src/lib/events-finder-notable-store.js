@@ -5,6 +5,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  normalizeTripPlanning,
+  tripPlanningToLegacyNotes,
+} from './events-finder-travel-logistics.js';
 
 const PKG_ROOT = path.join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 
@@ -21,6 +25,13 @@ const PKG_ROOT = path.join(fileURLToPath(new URL('.', import.meta.url)), '..', '
  *   ticketUrl: string | null,
  *   notes: string | null,
  *   planningNotes: string | null,
+ *   tripPlanning: {
+ *     packingList: string | null,
+ *     accommodations: string | null,
+ *     flightsTransport: string | null,
+ *     beforeTrip: string | null,
+ *     notes: string | null,
+ *   },
  *   overrides: {
  *     title?: string | null,
  *     start?: string | null,
@@ -103,6 +114,10 @@ export function normalizeNotableRecord(eventId, raw) {
   if (!id) return null;
   const r = raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : {};
   const notable = r.notable !== false;
+  const legacyNotes = r.planningNotes != null && String(r.planningNotes).trim()
+    ? String(r.planningNotes).trim().slice(0, 4000)
+    : null;
+  const tripPlanning = normalizeTripPlanning(r.tripPlanning, legacyNotes);
   return {
     eventId: id,
     notable,
@@ -128,9 +143,8 @@ export function normalizeNotableRecord(eventId, raw) {
     notes: r.notes != null && String(r.notes).trim()
       ? String(r.notes).trim().slice(0, 2000)
       : null,
-    planningNotes: r.planningNotes != null && String(r.planningNotes).trim()
-      ? String(r.planningNotes).trim().slice(0, 4000)
-      : null,
+    planningNotes: tripPlanningToLegacyNotes(tripPlanning) || legacyNotes,
+    tripPlanning,
     overrides: normalizeOverrides(r.overrides),
     manualEdit: r.manualEdit === true,
     updatedAt: r.updatedAt != null ? String(r.updatedAt) : null,
@@ -203,6 +217,15 @@ export async function upsertNotableEvent(eventId, patch, env = process.env) {
   const next = normalizeNotableRecord(id, {
     ...existing,
     ...patch,
+    tripPlanning:
+      patch.tripPlanning !== undefined
+        ? normalizeTripPlanning(patch.tripPlanning, existing.planningNotes)
+        : patch.planningNotes !== undefined
+          ? normalizeTripPlanning(
+            { ...(existing.tripPlanning || {}), notes: patch.planningNotes },
+            patch.planningNotes,
+          )
+          : existing.tripPlanning,
     overrides:
       patch.overrides !== undefined
         ? { ...existing.overrides, ...normalizeOverrides(patch.overrides) }
@@ -211,6 +234,10 @@ export async function upsertNotableEvent(eventId, patch, env = process.env) {
     updatedAt: new Date().toISOString(),
   });
   if (!next) return null;
+  // Keep planningNotes in sync with structured trip planning.
+  if (patch.tripPlanning !== undefined || patch.planningNotes !== undefined) {
+    next.planningNotes = tripPlanningToLegacyNotes(next.tripPlanning);
+  }
   store[id] = next;
   await saveNotableEventsStore(store, env);
   return next;
@@ -248,6 +275,7 @@ export function applyNotableToEvent(event, notable) {
     ticketUrl: notable.ticketUrl || null,
     notableNotes: notable.notes,
     planningNotes: notable.planningNotes,
+    tripPlanning: notable.tripPlanning,
     manualEdit: notable.manualEdit === true,
     notableUpdatedAt: notable.updatedAt,
   };

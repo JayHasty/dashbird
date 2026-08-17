@@ -61,7 +61,7 @@ Curated home-based retainers that cleared a recruiter-brief scan (`docs/un-job-f
 | 2 | Elemental Impact — climate programs (not fundraising) |
 | 2 | GEAPP — grids / energy access (not fundraising) |
 
-### World Bank / IMF / Gates / Rockefeller / IRENA (careers links; no public job API)
+### World Bank / IMF / Gates / Rockefeller / IRENA / IEA (careers links; no public job API)
 
 Named lanes stay grey until a posting is pasted into the manual source. Org cheat-sheet: `docs/mission-orgs.md`.
 
@@ -72,6 +72,7 @@ Named lanes stay grey until a posting is pasted into the manual source. Org chea
 | 2 | Gates — ag / energy / WASH / public-interest AI |
 | 2 | Rockefeller — Power / GEAPP (Director, not SVP) |
 | Watch | IRENA — renewables programme (not junior P-1 / Bonn-only) |
+| Watch | IEA — energy policy / electricity systems (not junior PAL / Paris-only) |
 
 ---
 

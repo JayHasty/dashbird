@@ -7,7 +7,7 @@
 **Facts / dates / numbers:** `portfolio/content/master-profile.md`  
 **Story & voice:** `portfolio/products/brand/brand-and-story-guide.md`  
 **Anthropic-specific cooldown rules:** `portfolio/products/applications/anthropic/STRATEGY.md` (override this brief when the employer is Anthropic)  
-**Related Dashbird docs:** `docs/job-watch.md` · UN System scan: `docs/un-job-fit-shortlist.md` · IRENA/ESMAP + foundation watch: `docs/mission-orgs.md`
+**Related Dashbird docs:** `docs/job-watch.md` · UN System scan: `docs/un-job-fit-shortlist.md` · IRENA/IEA/ESMAP + foundation watch: `docs/mission-orgs.md`
 
 ---
 

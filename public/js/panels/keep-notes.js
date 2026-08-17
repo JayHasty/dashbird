@@ -125,18 +125,6 @@ export function mountKeepNotes(root) {
   }
 
   /**
-   * @param {string} body
-   * @param {number} lineIndex
-   */
-  function toggleBodyChecklistLine(body, lineIndex) {
-    const lines = String(body || '').split('\n');
-    const parsed = parseCheckLine(lines[lineIndex] ?? '');
-    if (!parsed) return String(body || '');
-    lines[lineIndex] = formatCheckLine(!parsed.checked, parsed.text);
-    return lines.join('\n');
-  }
-
-  /**
    * Insert or convert the current textarea line into a checklist item.
    * @param {HTMLTextAreaElement} textarea
    */
@@ -816,21 +804,18 @@ export function mountKeepNotes(root) {
       const parsed = parseCheckLine(line);
       const bullet = parseBulletLine(line);
       if (parsed) {
-        const row = document.createElement('label');
+        // Preview only — clicks open the note; checklist edits happen in the editor.
+        const row = document.createElement('div');
         row.className = 'keep-notes__check-item';
         if (parsed.checked) row.classList.add('keep-notes__check-item--done');
-        row.addEventListener('click', (e) => e.stopPropagation());
-        row.addEventListener('pointerdown', (e) => e.stopPropagation());
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.className = 'keep-notes__check-item-input';
         cb.checked = parsed.checked;
-        cb.setAttribute('aria-label', parsed.text ? `Toggle: ${parsed.text}` : 'Toggle checklist item');
-        const lineIndex = i;
-        cb.addEventListener('change', () => {
-          void toggleChecklistItem(note.id, lineIndex);
-        });
+        cb.disabled = true;
+        cb.tabIndex = -1;
+        cb.setAttribute('aria-hidden', 'true');
 
         const text = document.createElement('span');
         text.className = 'keep-notes__check-item-text';
@@ -861,45 +846,6 @@ export function mountKeepNotes(root) {
         gap.textContent = '\u00a0';
         bodyEl.append(gap);
       }
-    }
-  }
-
-  /**
-   * @param {string} noteId
-   * @param {number} lineIndex
-   */
-  async function toggleChecklistItem(noteId, lineIndex) {
-    const note = notes.find((n) => n.id === noteId);
-    if (!note) return;
-    const nextBody = toggleBodyChecklistLine(note.body || '', lineIndex);
-    if (nextBody === (note.body || '')) return;
-    const prevBody = note.body;
-    note.body = nextBody;
-    if (editingNote?.id === noteId) {
-      editingNote = { ...editingNote, body: nextBody };
-      editorBody.value = nextBody;
-    }
-    const card = root.querySelector(`.keep-notes__card[data-id="${CSS.escape(noteId)}"]`);
-    const bodyEl = card?.querySelector('.keep-notes__card-body');
-    if (bodyEl) fillCardBody(/** @type {HTMLElement} */ (bodyEl), note);
-    try {
-      const r = await fetch(`/api/keep-notes/${encodeURIComponent(noteId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: nextBody }),
-      });
-      const data = await r.json();
-      if (!data.ok) throw new Error(data.error || 'save failed');
-      notes = notes.map((n) => (n.id === noteId ? data.note : n));
-      if (editingNote?.id === noteId) editingNote = data.note;
-    } catch (e) {
-      note.body = prevBody;
-      if (editingNote?.id === noteId) {
-        editingNote = { ...editingNote, body: prevBody };
-        editorBody.value = prevBody;
-      }
-      if (bodyEl) fillCardBody(/** @type {HTMLElement} */ (bodyEl), note);
-      showStatus(String(e?.message || e), true);
     }
   }
 

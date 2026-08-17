@@ -883,6 +883,13 @@ export function mountEventsFinderMobile(root) {
       editedTag.title = 'Hand-edited — auto research is paused for this event';
       textWrap.append(editedTag);
     }
+    if (item.planningNotes) {
+      const logTag = document.createElement('span');
+      logTag.className = 'events-finder__big-events-edited-tag';
+      logTag.textContent = 'logistics';
+      logTag.title = String(item.planningNotes).slice(0, 200);
+      textWrap.append(logTag);
+    }
     main.append(textWrap);
 
     const actions = document.createElement('div');
@@ -968,6 +975,30 @@ export function mountEventsFinderMobile(root) {
     const ebStartI = field('Early bird start', 'date', item.earlyBirdStart || '');
     const ebEndI = field('Early bird end', 'date', item.earlyBirdEnd || '');
     const notesI = field('Description', 'textarea', item.notes || '');
+    const logisticsI = field(
+      'Logistics notes (flights, lodging…)',
+      'textarea',
+      item.planningNotes || '',
+    );
+    const logisticsStatus = document.createElement('p');
+    logisticsStatus.className = 'events-finder__big-events-msg muted';
+    logisticsStatus.hidden = true;
+    wrap.append(logisticsStatus);
+    if (logisticsI instanceof HTMLTextAreaElement) {
+      const slug = String(item.slug || '').trim();
+      bindLogisticsAutosave(logisticsI, {
+        statusEl: logisticsStatus,
+        save: async (text) => {
+          if (!slug) throw new Error('missing_slug');
+          await saveBigEventPlanningNotes(slug, text);
+          item.planningNotes = String(text || '').trim() || null;
+        },
+        onSaved: () => {
+          void refreshBigEventsFromStore();
+          void loadEvents();
+        },
+      });
+    }
 
     const actions = document.createElement('div');
     actions.className = 'events-finder__big-events-edit-actions';
@@ -1019,6 +1050,7 @@ export function mountEventsFinderMobile(root) {
           earlyBirdStart: ebStartI.value,
           earlyBirdEnd: ebEndI.value,
           notes: notesI.value.trim(),
+          planningNotes: logisticsI.value.trim(),
         };
         const res = await fetch(
           `/api/events-finder/big-events/${encodeURIComponent(item.slug)}`,
@@ -1223,6 +1255,184 @@ export function mountEventsFinderMobile(root) {
     }
   }
 
+  const LOGISTICS_AUTOSAVE_MS = 450;
+
+  /**
+   * @param {unknown} notes
+   * @returns {boolean}
+   */
+  function hasLogisticsNotes(notes) {
+    return Boolean(String(notes || '').trim());
+  }
+
+  /**
+   * Warn before skipping an event that has logistics notes.
+   * @param {object} item
+   * @returns {boolean}
+   */
+  function confirmSkipDespiteLogistics(item) {
+    if (!hasLogisticsNotes(item?.planningNotes)) return true;
+    return window.confirm(
+      'This event has logistics notes saved (flights, lodging, packing, etc.). Skip it anyway?',
+    );
+  }
+
+  /**
+   * Debounced autosave for logistics textareas (server-backed, phone-synced).
+   * @param {HTMLTextAreaElement} ta
+   * @param {{
+   *   save: (text: string) => Promise<void>,
+   *   statusEl?: HTMLElement | null,
+   *   onSaved?: (text: string) => void,
+   *   debounceMs?: number,
+   * }} opts
+   */
+  function bindLogisticsAutosave(ta, opts) {
+    const debounceMs = opts.debounceMs ?? LOGISTICS_AUTOSAVE_MS;
+    let timer = /** @type {ReturnType<typeof setTimeout> | null} */ (null);
+    let inFlight = false;
+    let again = false;
+    let lastAck = ta.value;
+    let destroyed = false;
+
+    function setStatus(text, kind) {
+      if (!opts.statusEl) return;
+      opts.statusEl.hidden = !text;
+      opts.statusEl.textContent = text || '';
+      opts.statusEl.className =
+        kind === 'error'
+          ? 'events-finder__big-events-msg events-finder__big-events-msg--error'
+          : 'events-finder__big-events-msg muted';
+    }
+
+    async function flush() {
+      if (destroyed) return;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      const text = ta.value;
+      if (text === lastAck) return;
+      if (inFlight) {
+        again = true;
+        return;
+      }
+      inFlight = true;
+      setStatus('Saving…');
+      try {
+        await opts.save(text);
+        lastAck = text;
+        opts.onSaved?.(text);
+        setStatus('Saved');
+      } catch (e) {
+        setStatus(String(e?.message || e), 'error');
+      } finally {
+        inFlight = false;
+        if (again) {
+          again = false;
+          void flush();
+        }
+      }
+    }
+
+    const onInput = () => {
+      setStatus('Saving…');
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void flush(), debounceMs);
+    };
+    ta.addEventListener('input', onInput);
+    ta.addEventListener('blur', () => void flush());
+
+    return {
+      flush,
+      destroy() {
+        destroyed = true;
+        ta.removeEventListener('input', onInput);
+        if (timer) clearTimeout(timer);
+      },
+    };
+  }
+
+  /**
+   * @param {string} slug
+   * @param {string} text
+   */
+  async function saveBigEventPlanningNotes(slug, text) {
+    const res = await fetch(`/api/events-finder/big-events/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planningNotes: String(text || '').trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  }
+
+  /**
+   * Logistics notes dialog for a producer / big event (autosaves).
+   * @param {object} item
+   */
+  function openProducerLogisticsDialog(item) {
+    const slug = String(item?.slug || '').trim();
+    if (!slug) return;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'events-finder__correct-backdrop';
+    const panel = document.createElement('div');
+    panel.className = 'events-finder__correct-dialog';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+
+    const title = document.createElement('h3');
+    title.className = 'events-finder__correct-title';
+    title.textContent = 'Logistics notes';
+    const hint = document.createElement('p');
+    hint.className = 'events-finder__correct-hint muted';
+    hint.textContent = `${item.title || item.query || 'Producer'} — accommodations, flights, packing, etc. Autosaves.`;
+
+    const ta = document.createElement('textarea');
+    ta.className = 'events-finder__correct-input';
+    ta.rows = 8;
+    ta.placeholder = 'Flights…\nLodging…\nOther…';
+    ta.value = item.planningNotes ? String(item.planningNotes) : '';
+    ta.autocomplete = 'off';
+
+    const status = document.createElement('p');
+    status.className = 'events-finder__big-events-msg muted';
+    status.hidden = true;
+
+    const actions = document.createElement('div');
+    actions.className = 'events-finder__correct-actions';
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'events-finder__big-events-confirm';
+    done.textContent = 'Done';
+    actions.append(done);
+    panel.append(title, hint, ta, status, actions);
+    backdrop.append(panel);
+    document.body.append(backdrop);
+    ta.focus();
+
+    const autosave = bindLogisticsAutosave(ta, {
+      statusEl: status,
+      save: async (text) => {
+        await saveBigEventPlanningNotes(slug, text);
+        item.planningNotes = String(text || '').trim() || null;
+      },
+    });
+
+    const close = async () => {
+      await autosave.flush();
+      autosave.destroy();
+      backdrop.remove();
+      void refreshBigEventsFromStore();
+      void loadEvents();
+    };
+    done.addEventListener('click', () => void close());
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) void close();
+    });
+  }
+
   /**
    * POST a big-event feed-card action (snooze / skip / restore), then refresh.
    * @param {object} item
@@ -1231,6 +1441,7 @@ export function mountEventsFinderMobile(root) {
   async function bigEventCardAction(item, action) {
     const slug = String(item?.slug || '').trim();
     if (!slug) return;
+    if (action === 'skip' && !confirmSkipDespiteLogistics(item)) return;
     try {
       const res = await fetch(
         `/api/events-finder/big-events/${encodeURIComponent(slug)}/${action}`,
@@ -1858,6 +2069,7 @@ export function mountEventsFinderMobile(root) {
   async function hideEvent(ev) {
     const id = String(ev.id || '').trim();
     if (!id || !taste || !criteriaReady) return;
+    if (!confirmSkipDespiteLogistics(ev)) return;
     const record = skippedRecordFromEvent(ev);
     if (!record) return;
     /** @type {object[]} */
@@ -2930,7 +3142,19 @@ export function mountEventsFinderMobile(root) {
     calBtn.textContent = 'Add to cal';
     calBtn.addEventListener('click', (e) => e.stopPropagation());
 
-    actions.append(snoozeBtn, skipBtn, calBtn);
+    const logisticsBtn = document.createElement('button');
+    logisticsBtn.type = 'button';
+    logisticsBtn.className = 'mobile-events__action mobile-events__action--logistics';
+    logisticsBtn.title = 'Logistics notes — flights, lodging, packing';
+    logisticsBtn.setAttribute('aria-label', 'Edit logistics notes');
+    logisticsBtn.textContent = item.planningNotes ? 'Logistics ✓' : 'Logistics';
+    logisticsBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openProducerLogisticsDialog(item);
+    });
+
+    actions.append(logisticsBtn, snoozeBtn, skipBtn, calBtn);
 
     body.append(head, meta, priceEl, statusLine, actions);
     row.append(icon, body);

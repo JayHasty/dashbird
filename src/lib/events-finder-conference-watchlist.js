@@ -14,6 +14,10 @@ import {
 } from './events-finder-conference-watchlist-store.js';
 import { assertPublicHttpUrl } from './public-http-url.js';
 import { braveApiEnabled, braveApiWebSearch, braveApiImageSearch } from './brave-search-api.js';
+import {
+  looksLikePasswordGate,
+  cookieJarForPasswordSite,
+} from './events-finder-site-unlock.js';
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
@@ -290,7 +294,11 @@ function fetchPageCandidates(safeHref) {
   return out;
 }
 
-async function fetchPage(url) {
+/**
+ * @param {string} url
+ * @param {{ password?: string | null, cookie?: string | null }} [opts]
+ */
+async function fetchPage(url, opts = {}) {
   const href = String(url || '').trim();
   if (!href) return { text: '', ogImage: null, pageImages: [] };
   // URLs here are user-pasted (manual add) or scraped from search results —
@@ -314,16 +322,23 @@ async function fetchPage(url) {
     }
   }
   const uas = [BROWSER_UA, BROWSER_UA_FALLBACK];
+  const passwordOverride = String(opts.password || '').trim() || null;
+  /** @type {string | null} */
+  let unlockedCookie = String(opts.cookie || '').trim() || null;
 
   for (const tryHref of safeCandidates) {
     for (const ua of uas) {
       try {
+        /** @type {Record<string, string>} */
+        const headers = {
+          Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'User-Agent': ua,
+        };
+        if (unlockedCookie) headers.Cookie = unlockedCookie;
+
         const r = await fetch(tryHref, {
-          headers: {
-            Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'User-Agent': ua,
-          },
+          headers,
           signal: AbortSignal.timeout(12_000),
           redirect: 'follow',
         });
@@ -332,7 +347,42 @@ async function fetchPage(url) {
           if (r.status === 404 || r.status === 410) break;
           continue;
         }
-        const html = await r.text();
+        let html = await r.text();
+        // Squarespace (and similar) lock screens — unlock once, then retry with cookie.
+        if (!unlockedCookie && looksLikePasswordGate(html)) {
+          unlockedCookie = await cookieJarForPasswordSite(
+            tryHref,
+            ua,
+            passwordOverride,
+            process.env,
+          );
+          if (unlockedCookie) {
+            const unlocked = await fetch(tryHref, {
+              headers: { ...headers, Cookie: unlockedCookie },
+              signal: AbortSignal.timeout(12_000),
+              redirect: 'follow',
+            });
+            if (unlocked.ok) {
+              html = await unlocked.text();
+              if (looksLikePasswordGate(html)) {
+                continue;
+              }
+              const finalBase = unlocked.url || tryHref;
+              return {
+                text: htmlToText(html),
+                ogImage: extractOgImage(html, finalBase),
+                pageImages: extractPageImages(html, finalBase, 8),
+                pageTitle: extractPageTitle(html),
+                finalUrl: finalBase,
+              };
+            }
+            continue;
+          }
+        }
+        if (looksLikePasswordGate(html)) {
+          // Known gate but no password / unlock failed — don't feed lock-screen text to LLM.
+          continue;
+        }
         const finalBase = r.url || tryHref;
         const text = htmlToText(html);
         const ogImage = extractOgImage(html, finalBase);
@@ -2486,6 +2536,7 @@ export async function researchConferenceQuery(query, env = process.env, opts = {
       nextEditionEstimated,
       notes: finalNotes,
       planningNotes: existing.planningNotes || null,
+      tripPlanning: existing.tripPlanning || null,
       reminderLeadDays: existing.reminderLeadDays ?? null,
       notifyWhenDatesSet: existing.notifyWhenDatesSet !== false,
       datesAnnouncedAt,
@@ -2742,6 +2793,7 @@ export function conferenceRecordToHeadsUp(record, now = new Date()) {
     nextEditionEstimated: record.nextEditionEstimated === true,
     notes: record.notes || null,
     planningNotes: record.planningNotes || null,
+    tripPlanning: record.tripPlanning || null,
     notifyWhenDatesSet: record.notifyWhenDatesSet === true,
     datesAnnouncedAt: record.datesAnnouncedAt || null,
     fieldWires: record.fieldWires || {},

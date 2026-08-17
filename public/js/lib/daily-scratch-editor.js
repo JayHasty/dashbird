@@ -7,6 +7,8 @@ import { loadDailyScratch, saveDailyScratch } from './daily-scratch-storage.js';
 export const DAILY_SCRATCH_VARIANT_ID = 'green';
 const SERVER_SAVE_MS = 400;
 const CHECK_DELETE_MS = 5000;
+const PULL_WHILE_VISIBLE_MS = 12_000;
+const SCRATCH_SYNC_CHANNEL = 'dashbird-daily-scratch-sync';
 
 export const ICON_BULLETS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="18" r="1.4" fill="currentColor" stroke="none"/><path d="M10 6h10M10 12h10M10 18h10"/></svg>`;
 export const ICON_CHECKS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 3 3 5-6"/></svg>`;
@@ -48,6 +50,18 @@ export function mountScratchPad(body, opts) {
   let saveTimer = null;
   let saveInFlight = false;
   let saveAgain = false;
+  /** Content last acknowledged by the server; null until first successful GET/PUT. */
+  /** @type {string | null} */
+  let ackContent = null;
+  /** @type {ReturnType<typeof setInterval> | null} */
+  let pullTimer = null;
+  /** @type {BroadcastChannel | null} */
+  let syncChannel = null;
+  try {
+    syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SCRATCH_SYNC_CHANNEL) : null;
+  } catch {
+    syncChannel = null;
+  }
   /** @type {Map<HTMLElement, ReturnType<typeof setTimeout>>} */
   const pendingDeletes = new Map();
 
@@ -254,11 +268,24 @@ export function mountScratchPad(body, opts) {
     }
   }
 
+  function notifyPeers() {
+    try {
+      syncChannel?.postMessage({
+        type: 'scratch-updated',
+        updatedAt: state.updatedAt,
+        content: state.content,
+      });
+    } catch {
+      // channel closed / unsupported
+    }
+  }
+
   /**
    * @param {{ keepalive?: boolean }} [saveOpts]
    */
   async function persistServer(saveOpts = {}) {
     if (!hydrated) return;
+    if (!dirty && ackContent !== null && state.content === ackContent) return;
     if (saveInFlight) {
       saveAgain = true;
       return;
@@ -274,17 +301,23 @@ export function mountScratchPad(body, opts) {
         cache: 'no-store',
       });
       const data = await r.json().catch(() => null);
-      if (data?.ok && data?.note && !dirty) {
-        state = { ...state, updatedAt: String(data.note.updatedAt || state.updatedAt || '') };
-        persistLocal();
+      if (data?.ok && data?.note) {
+        const serverUpdated = String(data.note.updatedAt || '');
+        if (state.content === content) {
+          dirty = false;
+          ackContent = content;
+          state = { ...state, updatedAt: serverUpdated || state.updatedAt || '' };
+          persistLocal();
+          notifyPeers();
+        }
       }
     } catch {
       // keep the local draft; retry on next edit / flush
     } finally {
       saveInFlight = false;
-      if (saveAgain) {
+      if (saveAgain || dirty) {
         saveAgain = false;
-        void persistServer(saveOpts);
+        if (dirty) void persistServer(saveOpts);
       }
     }
   }
@@ -294,18 +327,18 @@ export function mountScratchPad(body, opts) {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       saveTimer = null;
-      dirty = false;
       void persistServer();
     }, SERVER_SAVE_MS);
   }
 
+  /** Push only when there are unsaved edits — never overwrite peers with a stale tab. */
   function flushSave() {
+    if (!dirty && ackContent !== null && state.content === ackContent) return;
     persistLocal();
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    dirty = false;
     void persistServer({ keepalive: true });
   }
 
@@ -408,7 +441,7 @@ export function mountScratchPad(body, opts) {
       const data = await r.json();
       if (!data?.ok || !data?.note) {
         hydrated = true;
-        if (state.content) void persistServer();
+        if (dirty || state.content) void persistServer();
         return;
       }
       const serverContent = typeof data.note.content === 'string' ? data.note.content : '';
@@ -419,27 +452,52 @@ export function mountScratchPad(body, opts) {
         void persistServer();
         return;
       }
+      // Only push a local draft when we have never acked the server (or are dirty — handled above).
+      // After a successful sync, server always wins so idle tabs cannot clobber phone/desktop peers.
       const preferLocal =
+        ackContent === null &&
         Boolean(state.content) &&
+        state.content !== serverContent &&
         (!serverContent || (localUpdated && serverUpdated && localUpdated > serverUpdated));
       if (preferLocal) {
         hydrated = true;
-        if (state.content !== serverContent) void persistServer();
+        void persistServer();
         return;
       }
+      const contentChanged = serverContent !== state.content;
       state = {
         ...state,
         content: serverContent,
         updatedAt: serverUpdated || state.updatedAt || '',
       };
+      ackContent = serverContent;
       persistLocal();
-      applyContent();
+      if (contentChanged) applyContent();
     } catch {
       // offline — keep the local draft
     } finally {
       hydrated = true;
       if (dirty) void persistServer();
     }
+  }
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+      flushSave();
+      return;
+    }
+    void hydrateFromServer();
+  }
+
+  function startPullLoop() {
+    if (pullTimer) return;
+    pullTimer = setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      if (dirty || document.activeElement === editor || editor.contains(document.activeElement)) {
+        return;
+      }
+      void hydrateFromServer();
+    }, PULL_WHILE_VISIBLE_MS);
   }
 
   applyContent();
@@ -534,12 +592,34 @@ export function mountScratchPad(body, opts) {
 
   editor.addEventListener('blur', () => flushSave());
 
+  if (syncChannel) {
+    syncChannel.addEventListener('message', (ev) => {
+      const msg = ev?.data;
+      if (!msg || msg.type !== 'scratch-updated') return;
+      if (dirty) return;
+      const peerContent = typeof msg.content === 'string' ? msg.content : null;
+      if (peerContent == null || peerContent === state.content) return;
+      state = {
+        ...state,
+        content: peerContent,
+        updatedAt: String(msg.updatedAt || state.updatedAt || ''),
+      };
+      ackContent = peerContent;
+      persistLocal();
+      applyContent();
+    });
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  startPullLoop();
+
   void hydrateFromServer();
 
   return {
     editor,
     tools,
     getState: () => state,
+    isDirty: () => dirty,
     /**
      * @param {Partial<import('./daily-scratch-storage.js').DailyScratchState>} partial
      */

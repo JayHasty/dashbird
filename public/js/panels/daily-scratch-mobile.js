@@ -94,7 +94,4 @@ export function mountDailyScratchMobile() {
   backdrop.addEventListener('click', closeSheet);
 
   window.addEventListener('pagehide', () => pad.flushSave());
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') pad.flushSave();
-  });
 }

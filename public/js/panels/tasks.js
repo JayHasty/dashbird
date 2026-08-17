@@ -1828,6 +1828,13 @@ export function mountTasks(root, config = {}) {
       onTextChange: (id, text, taskProjectId) => {
         updateTaskTextLocally(id, text, taskProjectId ?? null);
       },
+      onSubtaskDone: (subtaskId, done, parentId, taskProjectId, text) => {
+        if (done) removeTaskLocally(subtaskId, taskProjectId ?? null);
+        else addSubtaskLocally(parentId, { id: subtaskId, text: text || '', done: false });
+      },
+      onSubtaskAdded: (parentId, item) => {
+        addSubtaskLocally(parentId, item);
+      },
     });
   });
 

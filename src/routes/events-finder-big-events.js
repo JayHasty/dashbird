@@ -25,6 +25,19 @@ import {
   loadConferenceHeadsUp,
   probeProducerFromUrl,
 } from '../lib/events-finder-conference-watchlist.js';
+import {
+  buildEventLogistics,
+  normalizeTripPlanning,
+  tripPlanningToLegacyNotes,
+  resolveLogisticsLatLon,
+} from '../lib/events-finder-travel-logistics.js';
+import {
+  listEventsFinderEvents,
+} from '../lib/events-finder-store.js';
+import {
+  loadNotableEventsStore,
+  applyNotableToEvent,
+} from '../lib/events-finder-notable-store.js';
 
 const router = Router();
 router.use(express.json({ limit: '256kb' }));
@@ -252,6 +265,62 @@ const EDITABLE_DATE_FIELDS = [
   'earlyBirdEnd',
 ];
 
+/**
+ * GET /:slug/logistics — trip planning pack + nearby taste-ranked events.
+ */
+router.get('/:slug/logistics', async (req, res) => {
+  try {
+    const slug = slugFromQuery(String(req.params.slug || ''));
+    if (!slug) {
+      res.status(400).json({ ok: false, error: 'invalid_slug' });
+      return;
+    }
+    const store = await loadConferenceWatchlistStore(process.env);
+    const rec = store.bySlug[slug];
+    if (!rec) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const item = conferenceRecordToWatchItem(rec, new Date());
+    const asEvent = {
+      id: item.id,
+      title: item.title,
+      start: item.start,
+      end: item.end,
+      venue: item.venue,
+      city: item.city,
+      url: item.url,
+      planningNotes: item.planningNotes,
+      tripPlanning: item.tripPlanning,
+    };
+    const coords = resolveLogisticsLatLon(asEvent);
+    if (coords) {
+      asEvent.lat = coords.lat;
+      asEvent.lon = coords.lon;
+    } else if (item.city) {
+      // City-only: still allow same-city nearby + area feeds without map pins.
+    }
+    const notableStore = await loadNotableEventsStore();
+    const catalog = listEventsFinderEvents({ limit: 2000 }).map((ev) => {
+      const n = notableStore[String(ev.id || '')];
+      return n ? applyNotableToEvent(ev, n) : ev;
+    });
+    const criteria = await loadEventsFinderCriteria();
+    const logistics = buildEventLogistics(asEvent, catalog, {
+      taste: {
+        lookFor: criteria.lookFor,
+        skip: criteria.skip,
+        blacklist: criteria.blacklist,
+      },
+      tripPlanning: rec.tripPlanning,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ...logistics, slug, producer: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 /** @param {unknown} raw */
 function cleanDateInput(raw) {
   const s = String(raw ?? '').trim().slice(0, 10);
@@ -315,6 +384,11 @@ router.patch('/:slug', async (req, res) => {
       // Logistics notes are user-only; do not treat as research-lock.
       if (key !== 'planningNotes') metaEdited = true;
     }
+    if (Object.prototype.hasOwnProperty.call(body, 'tripPlanning')) {
+      const tp = normalizeTripPlanning(body.tripPlanning, rec.planningNotes);
+      patch.tripPlanning = tp;
+      patch.planningNotes = tripPlanningToLegacyNotes(tp);
+    }
     for (const key of EDITABLE_DATE_FIELDS) {
       if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
       const val = cleanDateInput(body[key]);
@@ -339,6 +413,7 @@ router.patch('/:slug', async (req, res) => {
       && !Object.prototype.hasOwnProperty.call(patch, 'reminderLeadDays')
       && !Object.prototype.hasOwnProperty.call(patch, 'notifyWhenDatesSet')
       && !Object.prototype.hasOwnProperty.call(patch, 'planningNotes')
+      && !Object.prototype.hasOwnProperty.call(patch, 'tripPlanning')
     ) {
       res.status(400).json({ ok: false, error: 'no_editable_fields' });
       return;

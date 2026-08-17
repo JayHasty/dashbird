@@ -1459,6 +1459,24 @@ export function mountTasksMobile(root, config = {}) {
   }
 
   /**
+   * @param {string} parentId
+   * @param {{ id: string, text: string, done?: boolean }} sub
+   */
+  function addSubtaskLocally(parentId, sub) {
+    if (!sub?.id || !sub?.text) return;
+    items = items.filter((it) => it.id !== sub.id);
+    const loc = locateItem(parentId);
+    if (!loc || loc.kind !== 'task') return;
+    const parent = items[loc.index];
+    const subs = [...(parent.subtasks || [])].filter((s) => s.id !== sub.id);
+    items[loc.index] = {
+      ...parent,
+      subtasks: [...subs, { id: sub.id, text: sub.text, done: Boolean(sub.done) }],
+    };
+    renderDetailShell();
+  }
+
+  /**
    * @param {string} id
    */
   function removeTaskLocally(id) {
@@ -1942,6 +1960,13 @@ export function mountTasksMobile(root, config = {}) {
       },
       onTextChange: (id, text) => {
         updateTaskTextLocally(id, text);
+      },
+      onSubtaskDone: (subtaskId, done, parentId, _projectId, text) => {
+        if (done) removeTaskLocally(subtaskId);
+        else addSubtaskLocally(parentId, { id: subtaskId, text: text || '', done: false });
+      },
+      onSubtaskAdded: (parentId, item) => {
+        addSubtaskLocally(parentId, item);
       },
     });
   });
