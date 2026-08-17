@@ -11,6 +11,57 @@ import { openLocalNewsReader } from './local-news-reader.js';
 const REFRESH_MS = 5 * 60 * 1000;
 const CACHE_KEY = 'local-news';
 const CACHE_MAX_MS = 20 * 60 * 1000;
+const COLLAPSE_KEY = 'dashbird-local-news-collapsed';
+
+/**
+ * Default collapsed (hidden body). Explicit `'0'` means expanded.
+ * @returns {boolean}
+ */
+function readCollapsed() {
+  try {
+    const v = localStorage.getItem(COLLAPSE_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * @param {boolean} collapsed
+ */
+function writeCollapsed(collapsed) {
+  try {
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Wire Local News card heading collapse (body hide/show). Starts collapsed.
+ * @param {HTMLElement} root
+ */
+function wireCardCollapse(root) {
+  const card = root.closest('.life-sidebar__card--news');
+  const btn = document.getElementById('local-news-collapse');
+  if (!(card instanceof HTMLElement) || !(btn instanceof HTMLButtonElement)) return;
+
+  const apply = (collapsed) => {
+    card.classList.toggle('life-sidebar__card--collapsed', collapsed);
+    root.hidden = collapsed;
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.setAttribute('aria-label', collapsed ? 'Expand Local News' : 'Collapse Local News');
+    btn.title = collapsed ? 'Expand Local News' : 'Collapse Local News';
+  };
+
+  apply(readCollapsed());
+  btn.addEventListener('click', () => {
+    const next = !card.classList.contains('life-sidebar__card--collapsed');
+    writeCollapsed(next);
+    apply(next);
+  });
+}
 
 /**
  * @param {string | null | undefined} iso
@@ -724,6 +775,7 @@ export function mountLocalNews(root) {
   if (!root) return undefined;
   root.replaceChildren();
   root.classList.add('local-news');
+  wireCardCollapse(root);
 
   const toolbar = document.createElement('div');
   toolbar.className = 'local-news__toolbar events-finder__toolbar';

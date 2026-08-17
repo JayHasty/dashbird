@@ -3224,9 +3224,13 @@ export function mountEventsFinder(root) {
   }
 
   function syncShowSkippedButton() {
-    const n = Array.isArray(taste?.skippedEvents)
+    const catalogN = Array.isArray(taste?.skippedEvents)
       ? taste.skippedEvents.length
       : Number(lastEventsPayload?.skippedCount) || 0;
+    const bigN = (Array.isArray(lastEventsPayload?.conferenceWatchlistItems)
+      ? lastEventsPayload.conferenceWatchlistItems
+      : []).filter((it) => it && it.skipped === true).length;
+    const n = catalogN + bigN;
     showSkippedBtn.textContent = showSkipped
       ? `Hide skipped${n ? ` (${n})` : ''}`
       : `Show skipped${n ? ` (${n})` : ''}`;
@@ -3533,14 +3537,16 @@ export function mountEventsFinder(root) {
   /**
    * A big-event heads-up card for the sidebar feed (flier + dates + ticket
    * status). Clicking the card opens the official event site; clicking the
-   * ticket-status pill opens the ticket page. It deliberately omits the
-   * fav/skip/calendar actions that only apply to regular feed events.
+   * ticket-status pill opens the ticket page. In skippedMode, Skip/Snooze
+   * become Unskip (restore).
    * @param {object} item conference-watch heads-up item
+   * @param {{ skippedMode?: boolean }} [opts]
    * @returns {HTMLElement}
    */
-  function buildBigEventFeedCard(item) {
+  function buildBigEventFeedCard(item, opts = {}) {
     const card = document.createElement('article');
     card.className = 'events-finder__card events-finder__card--big-event';
+    if (opts.skippedMode) card.classList.add('events-finder__card--skipped');
     const eventHref = String(item.url || item.homepageUrl || '').trim();
     const ticketHref = String(item.ticketUrl || item.homepageUrl || item.url || '').trim();
     if (eventHref) card.title = 'Open event site';
@@ -3646,40 +3652,6 @@ export function mountEventsFinder(root) {
     const actions = document.createElement('div');
     actions.className = 'events-finder__card-actions';
 
-    const snoozeBtn = document.createElement('button');
-    snoozeBtn.type = 'button';
-    snoozeBtn.className = 'events-finder__card-action events-finder__card-action--snooze';
-    snoozeBtn.title = 'Snooze — hide for one week, then bring it back';
-    snoozeBtn.setAttribute('aria-label', 'Snooze this big event for one week');
-    snoozeBtn.textContent = 'Snooze';
-    snoozeBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void bigEventCardAction(item, 'snooze');
-    });
-
-    const skipBtn = document.createElement('button');
-    skipBtn.type = 'button';
-    skipBtn.className = 'events-finder__card-action events-finder__card-action--hide';
-    skipBtn.title = 'Skip — dismiss this big event';
-    skipBtn.setAttribute('aria-label', 'Skip this big event');
-    skipBtn.textContent = 'Skip';
-    skipBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void bigEventCardAction(item, 'skip');
-    });
-
-    const calBtn = document.createElement('a');
-    calBtn.className = 'events-finder__card-action events-finder__card-action--cal';
-    calBtn.href = googleCalendarAddUrl(item);
-    calBtn.target = '_blank';
-    calBtn.rel = 'noopener noreferrer';
-    calBtn.title = 'Add to calendar';
-    calBtn.setAttribute('aria-label', 'Add this big event to calendar');
-    calBtn.textContent = 'Add to cal';
-    calBtn.addEventListener('click', (e) => e.stopPropagation());
-
     const logisticsBtn = document.createElement('button');
     logisticsBtn.type = 'button';
     logisticsBtn.className = 'events-finder__card-action events-finder__card-action--logistics';
@@ -3697,7 +3669,56 @@ export function mountEventsFinder(root) {
       void openPlanningLogisticsPopout(item, { producer: true });
     });
 
-    actions.append(logisticsBtn, snoozeBtn, skipBtn, calBtn);
+    if (opts.skippedMode) {
+      const unskipBtn = document.createElement('button');
+      unskipBtn.type = 'button';
+      unskipBtn.className = 'events-finder__card-action events-finder__card-action--unskip';
+      unskipBtn.title = 'Unskip — show in feed again';
+      unskipBtn.setAttribute('aria-label', 'Restore this big event');
+      unskipBtn.textContent = 'Unskip';
+      unskipBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void bigEventCardAction(item, 'restore');
+      });
+      actions.append(logisticsBtn, unskipBtn);
+    } else {
+      const snoozeBtn = document.createElement('button');
+      snoozeBtn.type = 'button';
+      snoozeBtn.className = 'events-finder__card-action events-finder__card-action--snooze';
+      snoozeBtn.title = 'Snooze — hide for one week, then bring it back';
+      snoozeBtn.setAttribute('aria-label', 'Snooze this big event for one week');
+      snoozeBtn.textContent = 'Snooze';
+      snoozeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void bigEventCardAction(item, 'snooze');
+      });
+
+      const skipBtn = document.createElement('button');
+      skipBtn.type = 'button';
+      skipBtn.className = 'events-finder__card-action events-finder__card-action--hide';
+      skipBtn.title = 'Skip — dismiss this big event';
+      skipBtn.setAttribute('aria-label', 'Skip this big event');
+      skipBtn.textContent = 'Skip';
+      skipBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void bigEventCardAction(item, 'skip');
+      });
+
+      const calBtn = document.createElement('a');
+      calBtn.className = 'events-finder__card-action events-finder__card-action--cal';
+      calBtn.href = googleCalendarAddUrl(item);
+      calBtn.target = '_blank';
+      calBtn.rel = 'noopener noreferrer';
+      calBtn.title = 'Add to calendar';
+      calBtn.setAttribute('aria-label', 'Add this big event to calendar');
+      calBtn.textContent = 'Add to cal';
+      calBtn.addEventListener('click', (e) => e.stopPropagation());
+
+      actions.append(logisticsBtn, snoozeBtn, skipBtn, calBtn);
+    }
 
     card.append(snap, head, cityEl, meta, priceEl, status, actions);
     if (eventHref) {
@@ -4201,31 +4222,6 @@ export function mountEventsFinder(root) {
   }
 
   /**
-   * @param {object} ev
-   * @param {boolean} notable
-   */
-  async function setEventNotable(ev, notable) {
-    const id = String(ev?.id || '').trim();
-    if (!id) return;
-    await patchNotable(id, notable ? { notable: true, reminderLeadWeeks: ev.reminderLeadWeeks || 4 } : { notable: false });
-    if (lastEventsPayload && Array.isArray(lastEventsPayload.events)) {
-      lastEventsPayload.events = lastEventsPayload.events.map((e) => {
-        if (String(e.id) !== id) return e;
-        if (!notable) {
-          const next = { ...e, notable: false };
-          delete next.reminderLeadWeeks;
-          delete next.earlyBirdPrice;
-          return next;
-        }
-        return { ...e, notable: true, reminderLeadWeeks: e.reminderLeadWeeks || 4 };
-      });
-      paintEvents(lastEventsPayload, {});
-    } else {
-      void loadEvents({ catalogOnly: true, quiet: true });
-    }
-  }
-
-  /**
    * Detail / override / early-bird editor for a notable (or soon-to-be-notable) event.
    * @param {object} ev
    */
@@ -4685,49 +4681,30 @@ export function mountEventsFinder(root) {
 
     card.append(snap, head, placeEl, cityEl, meta, priceEl, blurb, actions, footer);
 
-    if (!opts.mapPopup && !opts.skippedMode && eventId) {
-      const notableRow = document.createElement('label');
-      notableRow.className = 'events-finder__card-notable';
-      const notableCb = document.createElement('input');
-      notableCb.type = 'checkbox';
-      notableCb.checked = isNotable;
-      notableCb.addEventListener('click', (e) => e.stopPropagation());
-      notableCb.addEventListener('change', () => {
-        void setEventNotable(ev, notableCb.checked).catch((err) => {
-          notableCb.checked = !notableCb.checked;
-          window.alert(`Could not update notable: ${String(err?.message || err)}`);
-        });
-      });
-      const notableText = document.createElement('span');
-      notableText.textContent = 'Notable event';
-      notableRow.append(notableCb, notableText);
-      notableRow.addEventListener('click', (e) => e.stopPropagation());
-
+    if (!opts.mapPopup && !opts.skippedMode && eventId && isNotable) {
       const notableActions = document.createElement('div');
       notableActions.className = 'events-finder__card-notable-actions';
-      if (isNotable) {
-        const detailsBtn = document.createElement('button');
-        detailsBtn.type = 'button';
-        detailsBtn.className = 'events-finder__card-action';
-        detailsBtn.textContent = 'Details';
-        detailsBtn.title = 'Early bird, reminders, override scraped fields, re-scrape';
-        detailsBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openNotableDetailPopout(ev);
-        });
-        const planBtn = document.createElement('button');
-        planBtn.type = 'button';
-        planBtn.className = 'events-finder__card-action';
-        planBtn.textContent = 'Planning & logistics';
-        planBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          void openPlanningLogisticsPopout(ev);
-        });
-        notableActions.append(detailsBtn, planBtn);
-      }
-      card.append(notableRow, notableActions);
+      const detailsBtn = document.createElement('button');
+      detailsBtn.type = 'button';
+      detailsBtn.className = 'events-finder__card-action';
+      detailsBtn.textContent = 'Details';
+      detailsBtn.title = 'Early bird, reminders, override scraped fields, re-scrape';
+      detailsBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openNotableDetailPopout(ev);
+      });
+      const planBtn = document.createElement('button');
+      planBtn.type = 'button';
+      planBtn.className = 'events-finder__card-action';
+      planBtn.textContent = 'Planning & logistics';
+      planBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void openPlanningLogisticsPopout(ev);
+      });
+      notableActions.append(detailsBtn, planBtn);
+      card.append(notableActions);
     }
 
     if (isNotable && (ev.earlyBirdPrice || ev.earlyBirdStart || ev.ticketSalesStart)) {
@@ -4925,12 +4902,14 @@ export function mountEventsFinder(root) {
       });
     const events = showSkipped ? skippedList : mainEvents;
     lastFilteredEvents = events;
-    // Producer events (rare festivals) pin above the filtered catalog feed —
-    // they are never location-filtered.
+    // Producer / big events pin above the catalog feed in the main view.
+    // In "Show skipped" they go at the bottom — date/city filters do not apply.
+    const allBigEvents = Array.isArray(data.conferenceWatchlistItems)
+      ? data.conferenceWatchlistItems
+      : [];
     const activeBigEvents = showSkipped
-      ? []
-      : (Array.isArray(data.conferenceWatchlistItems) ? data.conferenceWatchlistItems : [])
-          .filter((it) => it && it.displayActive && !it.skipped && !it.snoozed);
+      ? allBigEvents.filter((it) => it && it.skipped === true)
+      : allBigEvents.filter((it) => it && it.displayActive && !it.skipped && !it.snoozed);
     conferenceToggle.dataset.producerCount = String(
       (Array.isArray(data.conferenceWatchlistItems) ? data.conferenceWatchlistItems : []).length,
     );
@@ -4987,14 +4966,22 @@ export function mountEventsFinder(root) {
     if (showSkipped) {
       const note = document.createElement('p');
       note.className = 'events-finder__skipped-note muted';
-      note.textContent = `${events.length} skipped — Unskip to bring one back.`;
+      const total = events.length + activeBigEvents.length;
+      note.textContent = `${total} skipped — Unskip to bring one back.`;
       listEl.append(note);
     }
-    for (const item of activeBigEvents) {
-      listEl.append(buildBigEventFeedCard(item));
+    if (!showSkipped) {
+      for (const item of activeBigEvents) {
+        listEl.append(buildBigEventFeedCard(item, { skippedMode: false }));
+      }
     }
     for (const ev of events) {
       listEl.append(buildEventCard(ev, { ...opts, skippedMode: showSkipped }));
+    }
+    if (showSkipped) {
+      for (const item of activeBigEvents) {
+        listEl.append(buildBigEventFeedCard(item, { skippedMode: true }));
+      }
     }
     if (mapBackdrop && (hadCards || !opts.fromCache || events.length)) {
       syncMap(events, data);

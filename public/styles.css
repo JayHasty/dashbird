@@ -268,6 +268,44 @@ body.dashy--deferred-ready .boot-deferred {
   flex-shrink: 0;
 }
 
+.life-sidebar__card-collapse {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted, #9aa3b2);
+  cursor: pointer;
+}
+
+.life-sidebar__card-collapse:hover,
+.life-sidebar__card-collapse:focus-visible {
+  color: var(--text, #e8eaed);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.life-sidebar__card-collapse-icon {
+  display: block;
+  transition: transform 0.15s ease;
+}
+
+.life-sidebar__card--collapsed .life-sidebar__card-collapse-icon {
+  transform: rotate(-90deg);
+}
+
+.life-sidebar__card--news.life-sidebar__card--collapsed > .life-sidebar__card-bar {
+  border-bottom: none;
+}
+
 .life-sidebar__card-expand {
   appearance: none;
   flex: 0 0 auto;

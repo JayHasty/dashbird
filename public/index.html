@@ -363,11 +363,31 @@
             </div>
           </section>
           <section
-            class="life-sidebar__card life-sidebar__card--news panel panel--glass"
+            class="life-sidebar__card life-sidebar__card--news life-sidebar__card--collapsed panel panel--glass"
             aria-labelledby="h-local-news"
           >
             <div class="life-sidebar__card-bar">
               <h2 id="h-local-news" class="life-sidebar__card-heading">Local News</h2>
+              <button
+                type="button"
+                class="life-sidebar__card-collapse"
+                id="local-news-collapse"
+                aria-label="Expand Local News"
+                title="Expand Local News"
+                aria-expanded="false"
+                aria-controls="mount-local-news"
+              >
+                <svg class="life-sidebar__card-collapse-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M4 6.5L8 10.5L12 6.5"
+                  />
+                </svg>
+              </button>
               <button
                 type="button"
                 class="life-sidebar__card-expand"
@@ -392,6 +412,7 @@
               class="life-sidebar__card-body life-sidebar__card-body--news"
               role="region"
               aria-labelledby="h-local-news"
+              hidden
             >
               <div class="boot-skeleton-stack" aria-hidden="true">
                 <div class="boot-skeleton-line"></div>
