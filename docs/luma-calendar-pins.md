@@ -36,7 +36,6 @@ https://luma.com/9zero
 https://luma.com/Big-Brain-SF
 https://luma.com/genai-sf
 https://luma.com/buildercommunityanz
-https://luma.com/claudecommunity
 https://luma.com/climatecafe
 https://luma.com/climatedraft-community
 https://luma.com/frontiertower
