@@ -30,7 +30,23 @@ import {
   normalizeTripPlanning,
   tripPlanningToLegacyNotes,
   resolveLogisticsLatLon,
+  fetchEventLogisticsWeather,
 } from '../lib/events-finder-travel-logistics.js';
+import { lookupEventCityOnline } from '../lib/events-finder-city-lookup.js';
+import {
+  getFlightModule,
+  upsertFlightModule,
+} from '../lib/events-finder-flight-module.js';
+import {
+  ensureTravelBriefForLogistics,
+  publicTravelBrief,
+  refreshTravelBrief,
+} from '../lib/events-finder-travel-brief.js';
+import {
+  getLogisticsModule,
+  publicLogisticsModule,
+  upsertLogisticsModule,
+} from '../lib/events-finder-logistics-modules.js';
 import {
   listEventsFinderEvents,
 } from '../lib/events-finder-store.js';
@@ -38,6 +54,7 @@ import {
   loadNotableEventsStore,
   applyNotableToEvent,
 } from '../lib/events-finder-notable-store.js';
+import { geocodeAddress } from '../lib/geocode-address.js';
 
 const router = Router();
 router.use(express.json({ limit: '256kb' }));
@@ -254,6 +271,7 @@ const EDITABLE_STRING_FIELDS = [
   'city',
   'ticketPrice',
   'earlyBirdPrice',
+  'gatesOpen',
   'notes',
   'planningNotes',
 ];
@@ -275,6 +293,251 @@ router.get('/:slug/logistics', async (req, res) => {
       res.status(400).json({ ok: false, error: 'invalid_slug' });
       return;
     }
+    let store = await loadConferenceWatchlistStore(process.env);
+    let rec = store.bySlug[slug];
+    if (!rec) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+
+    // Fill missing city from an online lookup (search + optional LLM).
+    if (!String(rec.city || '').trim()) {
+      try {
+        const looked = await lookupEventCityOnline(
+          {
+            name: rec.name || rec.query,
+            query: rec.query,
+            venue: rec.venue,
+            url: rec.homepageUrl || rec.url,
+            year: rec.eventStart ? Number(String(rec.eventStart).slice(0, 4)) : null,
+          },
+          process.env,
+        );
+        if (looked.city) {
+          const patch = {
+            ...rec,
+            city: looked.city,
+            researchedAt: rec.researchedAt || new Date().toISOString(),
+          };
+          store = await upsertConferenceWatchlistRecords({ [slug]: patch }, process.env);
+          rec = store.bySlug[slug] || patch;
+        }
+      } catch (e) {
+        console.warn('[big-events] city lookup failed', String(e?.message || e).slice(0, 160));
+      }
+    }
+
+    const item = conferenceRecordToWatchItem(rec, new Date());
+    const asEvent = {
+      id: item.id,
+      title: item.title,
+      start: item.start,
+      end: item.end,
+      venue: item.venue,
+      city: item.city,
+      url: item.url,
+      planningNotes: item.planningNotes,
+      tripPlanning: item.tripPlanning,
+    };
+    let coords = resolveLogisticsLatLon(asEvent);
+    if (!coords && item.city) {
+      const geo = await geocodeAddress(item.city, { countrycodes: null }).catch(() => null);
+      if (geo) {
+        asEvent.lat = geo.lat;
+        asEvent.lon = geo.lon;
+        coords = { lat: geo.lat, lon: geo.lon };
+      }
+    } else if (coords) {
+      asEvent.lat = coords.lat;
+      asEvent.lon = coords.lon;
+    }
+    const notableStore = await loadNotableEventsStore();
+    const catalog = listEventsFinderEvents({ limit: 2000 }).map((ev) => {
+      const n = notableStore[String(ev.id || '')];
+      return n ? applyNotableToEvent(ev, n) : ev;
+    });
+    const criteria = await loadEventsFinderCriteria();
+    const logistics = await buildEventLogistics(asEvent, catalog, {
+      taste: {
+        lookFor: criteria.lookFor,
+        skip: criteria.skip,
+        blacklist: criteria.blacklist,
+      },
+      tripPlanning: rec.tripPlanning,
+    });
+    const flightModule = await getFlightModule('big', slug, process.env);
+    const [transportMod, staysMod] = await Promise.all([
+      getLogisticsModule('big', slug, 'transportation', process.env),
+      getLogisticsModule('big', slug, 'accommodations', process.env),
+    ]);
+    const travelBriefPack = await ensureTravelBriefForLogistics(
+      {
+        kind: 'big',
+        id: slug,
+        city: asEvent.city,
+        start: asEvent.start,
+        end: asEvent.end,
+        lat: asEvent.lat,
+        lon: asEvent.lon,
+        title: asEvent.title,
+      },
+      process.env,
+      { wait: false },
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      ...logistics,
+      slug,
+      producer: true,
+      city: asEvent.city || logistics.map?.label || null,
+      travelBrief: travelBriefPack.eligible
+        ? publicTravelBrief(travelBriefPack.brief) || {
+            ok: false,
+            researching: true,
+            city: asEvent.city || null,
+            summary: null,
+            items: [],
+            packingTips: [],
+            sources: [],
+            nwsAlerts: [],
+            generatedAt: null,
+            error: null,
+            fresh: false,
+          }
+        : null,
+      flightModule: flightModule
+        ? {
+            enabled: flightModule.enabled,
+            destination: flightModule.destination,
+            destinationCity: flightModule.destinationCity,
+            departDate: flightModule.departDate,
+            origins: flightModule.origins,
+            cheapest: flightModule.cheapest,
+            best: flightModule.best,
+            priceTier: flightModule.priceTier,
+            buyByDate: flightModule.buyByDate,
+            buyByReason: flightModule.buyByReason,
+            googleFlightsUrl: flightModule.googleFlightsUrl,
+            lastCheckedAt: flightModule.lastCheckedAt,
+            nextCheckAt: flightModule.nextCheckAt,
+            checking: flightModule.checking,
+            error: flightModule.error,
+            historyPoints: flightModule.priceHistory?.length || 0,
+          }
+        : { enabled: false },
+      logisticsModules: {
+        transportation: publicLogisticsModule(transportMod) || { enabled: false, type: 'transportation' },
+        accommodations: publicLogisticsModule(staysMod) || { enabled: false, type: 'accommodations' },
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /:slug/travel-brief — refresh local conditions / packing brief.
+ * Body: { refresh?: boolean } (defaults to force refresh)
+ */
+router.post('/:slug/travel-brief', async (req, res) => {
+  try {
+    const slug = slugFromQuery(String(req.params.slug || ''));
+    if (!slug) {
+      res.status(400).json({ ok: false, error: 'invalid_slug' });
+      return;
+    }
+    const store = await loadConferenceWatchlistStore(process.env);
+    const rec = store.bySlug[slug];
+    if (!rec) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const item = conferenceRecordToWatchItem(rec, new Date());
+    const city = String(item.city || '').trim();
+    if (!city) {
+      res.status(400).json({ ok: false, error: 'missing_city' });
+      return;
+    }
+    const asEvent = {
+      title: item.title,
+      start: item.start,
+      end: item.end,
+      venue: item.venue,
+      city,
+    };
+    const coords = resolveLogisticsLatLon(asEvent);
+    if (coords) {
+      asEvent.lat = coords.lat;
+      asEvent.lon = coords.lon;
+    } else {
+      const geo = await geocodeAddress(city, { countrycodes: null }).catch(() => null);
+      if (geo) {
+        asEvent.lat = geo.lat;
+        asEvent.lon = geo.lon;
+      }
+    }
+    const brief = await refreshTravelBrief(
+      {
+        kind: 'big',
+        id: slug,
+        city,
+        start: asEvent.start,
+        end: asEvent.end,
+        lat: asEvent.lat,
+        lon: asEvent.lon,
+        title: asEvent.title,
+      },
+      process.env,
+      { force: req.body?.refresh !== false },
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, travelBrief: publicTravelBrief(brief) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * GET /:slug/logistics-module/:type — transportation | accommodations research state.
+ */
+router.get('/:slug/logistics-module/:type', async (req, res) => {
+  try {
+    const slug = slugFromQuery(String(req.params.slug || ''));
+    const type =
+      String(req.params.type || '') === 'accommodations' ? 'accommodations' : 'transportation';
+    if (!slug) {
+      res.status(400).json({ ok: false, error: 'invalid_slug' });
+      return;
+    }
+    const store = await loadConferenceWatchlistStore(process.env);
+    if (!store.bySlug[slug]) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const mod = await getLogisticsModule('big', slug, type, process.env);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      ok: true,
+      module: publicLogisticsModule(mod) || { enabled: false, type },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /:slug/logistics-module/:type — enable/disable + research transport/stays.
+ * Body: { enabled?: boolean, refresh?: boolean }
+ */
+router.post('/:slug/logistics-module/:type', async (req, res) => {
+  try {
+    const slug = slugFromQuery(String(req.params.slug || ''));
+    const type =
+      String(req.params.type || '') === 'accommodations' ? 'accommodations' : 'transportation';
+    if (!slug) {
+      res.status(400).json({ ok: false, error: 'invalid_slug' });
+      return;
+    }
     const store = await loadConferenceWatchlistStore(process.env);
     const rec = store.bySlug[slug];
     if (!rec) {
@@ -289,33 +552,122 @@ router.get('/:slug/logistics', async (req, res) => {
       end: item.end,
       venue: item.venue,
       city: item.city,
-      url: item.url,
-      planningNotes: item.planningNotes,
-      tripPlanning: item.tripPlanning,
+      lat: item.lat,
+      lon: item.lon,
+    };
+    let coords = resolveLogisticsLatLon(asEvent);
+    if (!coords && item.city) {
+      const geo = await geocodeAddress(item.city, { countrycodes: null }).catch(() => null);
+      if (geo) {
+        asEvent.lat = geo.lat;
+        asEvent.lon = geo.lon;
+        coords = { lat: geo.lat, lon: geo.lon };
+      }
+    }
+    const enabled = req.body?.enabled !== false;
+    const forceRefresh = req.body?.refresh === true;
+    /** @type {object | null} */
+    let weather = null;
+    if (type === 'accommodations' && enabled && coords) {
+      weather = await fetchEventLogisticsWeather(coords.lat, coords.lon, asEvent);
+    }
+    const mod = await upsertLogisticsModule(
+      {
+        kind: 'big',
+        id: slug,
+        type,
+        event: asEvent,
+        weather,
+        enabled,
+        forceRefresh: forceRefresh || enabled,
+        wait: false,
+      },
+      process.env,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, module: publicLogisticsModule(mod) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * GET /:slug/flight-module — current Google Flights watch state.
+ */
+router.get('/:slug/flight-module', async (req, res) => {
+  try {
+    const slug = slugFromQuery(String(req.params.slug || ''));
+    if (!slug) {
+      res.status(400).json({ ok: false, error: 'invalid_slug' });
+      return;
+    }
+    const store = await loadConferenceWatchlistStore(process.env);
+    if (!store.bySlug[slug]) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const flightModule = await getFlightModule('big', slug, process.env);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      ok: true,
+      flightModule: flightModule || { enabled: false },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /:slug/flight-module — enable/disable Google Flights watch for this Big Event.
+ * Body: { enabled?: boolean, refresh?: boolean }
+ */
+router.post('/:slug/flight-module', async (req, res) => {
+  try {
+    const slug = slugFromQuery(String(req.params.slug || ''));
+    if (!slug) {
+      res.status(400).json({ ok: false, error: 'invalid_slug' });
+      return;
+    }
+    const store = await loadConferenceWatchlistStore(process.env);
+    const rec = store.bySlug[slug];
+    if (!rec) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const enabled = req.body?.enabled !== false;
+    const forceRefresh = req.body?.refresh === true;
+    const item = conferenceRecordToWatchItem(rec, new Date());
+    const asEvent = {
+      title: item.title,
+      start: item.start,
+      end: item.end,
+      venue: item.venue,
+      city: item.city,
     };
     const coords = resolveLogisticsLatLon(asEvent);
     if (coords) {
       asEvent.lat = coords.lat;
       asEvent.lon = coords.lon;
     } else if (item.city) {
-      // City-only: still allow same-city nearby + area feeds without map pins.
+      const geo = await geocodeAddress(item.city, { countrycodes: null }).catch(() => null);
+      if (geo) {
+        asEvent.lat = geo.lat;
+        asEvent.lon = geo.lon;
+      }
     }
-    const notableStore = await loadNotableEventsStore();
-    const catalog = listEventsFinderEvents({ limit: 2000 }).map((ev) => {
-      const n = notableStore[String(ev.id || '')];
-      return n ? applyNotableToEvent(ev, n) : ev;
-    });
-    const criteria = await loadEventsFinderCriteria();
-    const logistics = buildEventLogistics(asEvent, catalog, {
-      taste: {
-        lookFor: criteria.lookFor,
-        skip: criteria.skip,
-        blacklist: criteria.blacklist,
+    const flightModule = await upsertFlightModule(
+      {
+        kind: 'big',
+        id: slug,
+        event: asEvent,
+        enabled,
+        forceRefresh: forceRefresh || enabled,
+        wait: false,
       },
-      tripPlanning: rec.tripPlanning,
-    });
+      process.env,
+    );
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ ...logistics, slug, producer: true });
+    res.json({ ok: true, flightModule });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -480,6 +832,8 @@ router.post('/:slug/correct', async (req, res) => {
       immediate.estimatedFromYear = null;
     } else if (expectedValue && field === 'earlyBirdPrice') {
       immediate.earlyBirdPrice = expectedValue;
+    } else if (expectedValue && field === 'gatesOpen') {
+      immediate.gatesOpen = String(expectedValue).trim().slice(0, 200);
     } else if (expectedValue && (field === 'eventStart' || field === 'eventEnd'
       || field === 'ticketSalesStart' || field === 'earlyBirdStart' || field === 'earlyBirdEnd')) {
       const ymd = cleanDateInput(expectedValue);

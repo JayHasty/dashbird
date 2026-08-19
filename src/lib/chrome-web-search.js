@@ -502,6 +502,47 @@ export async function searchGoogleImages(query, limit = 10, env = process.env) {
 }
 
 /**
+ * Run work against a shared Chromium page slot (serialized, max 2 in flight).
+ * Prefer this over launching a second browser for Google Flights / enrich scrapes.
+ * @template T
+ * @param {(page: import('playwright').Page, context: import('playwright').BrowserContext) => Promise<T>} fn
+ * @param {{
+ *   width?: number,
+ *   height?: number,
+ *   timeoutMs?: number,
+ *   env?: NodeJS.ProcessEnv,
+ * }} [opts]
+ * @returns {Promise<T | null>}
+ */
+export async function withChromePage(fn, opts = {}) {
+  const env = opts.env || process.env;
+  if (!chromeSearchEnabled(env)) return null;
+  const width = Math.max(320, Math.min(1920, Number(opts.width) || 1280));
+  const height = Math.max(240, Math.min(2200, Number(opts.height) || 900));
+  const timeoutMs = Math.max(5_000, Math.min(60_000, Number(opts.timeoutMs) || 20_000));
+  return withPageSlot(async () => {
+    let context = null;
+    try {
+      const b = await getBrowser();
+      context = await b.newContext({
+        viewport: { width, height },
+        userAgent: BROWSER_UA,
+        locale: 'en-US',
+        extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+      });
+      const page = await context.newPage();
+      page.setDefaultTimeout(timeoutMs);
+      return await fn(page, context);
+    } catch (e) {
+      console.warn('[chrome-web-search] withChromePage failed', String(e?.message || e).slice(0, 160));
+      return null;
+    } finally {
+      await context?.close().catch(() => {});
+    }
+  });
+}
+
+/**
  * Capture an above-the-fold PNG screenshot of a web page (for Big Events preview).
  * @param {string} url
  * @param {{ width?: number, height?: number, fullPage?: boolean, timeoutMs?: number }} [opts]

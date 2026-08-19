@@ -8,19 +8,26 @@ const cache = new Map();
 
 /**
  * @param {string} query
+ * @param {{ countrycodes?: string | null }} [opts]
  * @returns {Promise<{ lat: number, lon: number, displayName: string } | null>}
  */
-export async function geocodeAddress(query) {
+export async function geocodeAddress(query, opts = {}) {
   const q = String(query || '').trim();
   if (!q) return null;
-  const key = q.toLowerCase();
+  const countrycodes =
+    opts.countrycodes === null
+      ? null
+      : opts.countrycodes === undefined
+        ? 'us'
+        : String(opts.countrycodes || '').trim() || null;
+  const key = `${q.toLowerCase()}|${countrycodes || 'world'}`;
   if (cache.has(key)) return cache.get(key);
 
   const url = new URL(NOMINATIM);
   url.searchParams.set('q', q);
   url.searchParams.set('format', 'json');
   url.searchParams.set('limit', '1');
-  url.searchParams.set('countrycodes', 'us');
+  if (countrycodes) url.searchParams.set('countrycodes', countrycodes);
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 15_000);

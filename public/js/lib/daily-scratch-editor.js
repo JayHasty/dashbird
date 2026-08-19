@@ -435,6 +435,74 @@ export function mountScratchPad(body, opts) {
     sel?.addRange(range);
   }
 
+  /**
+   * @param {HTMLElement} line
+   */
+  function focusLineStart(line) {
+    const textEl = line.querySelector('.scratch-line__text') || line;
+    const range = document.createRange();
+    range.selectNodeContents(textEl);
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+
+  /**
+   * Collapsed caret offset within a line's editable text, or null if unavailable.
+   * @param {HTMLElement} line
+   * @returns {number | null}
+   */
+  function caretOffsetInLine(line) {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return null;
+    const textEl = line.querySelector('.scratch-line__text') || line;
+    const range = sel.getRangeAt(0);
+    if (range.startContainer !== textEl && !textEl.contains(range.startContainer)) return null;
+    const pre = document.createRange();
+    pre.selectNodeContents(textEl);
+    pre.setEnd(range.startContainer, range.startOffset);
+    return pre.toString().replace(/\u00a0/g, ' ').length;
+  }
+
+  /**
+   * @param {HTMLElement} line
+   * @param {string} text
+   */
+  function setLineText(line, text) {
+    const span = line.querySelector('.scratch-line__text');
+    if (span) {
+      span.textContent = text;
+      if (!text) span.append(document.createElement('br'));
+      return;
+    }
+    if (text) line.textContent = text;
+    else {
+      line.replaceChildren();
+      line.append(document.createElement('br'));
+    }
+  }
+
+  /**
+   * Drop check/bullet formatting on a line, keeping its text.
+   * @param {HTMLElement} line
+   * @param {{ focus?: 'start' | 'end' }} [opts]
+   * @returns {HTMLElement}
+   */
+  function exitListFormatting(line, opts = {}) {
+    const text = lineText(line);
+    const prev = pendingDeletes.get(line);
+    if (prev) {
+      clearTimeout(prev);
+      pendingDeletes.delete(line);
+    }
+    const plain = makePlainLine(text);
+    line.replaceWith(plain);
+    if (opts.focus === 'end') focusLineEnd(plain);
+    else focusLineStart(plain);
+    return plain;
+  }
+
   async function hydrateFromServer() {
     try {
       const r = await fetch('/api/daily-scratch', { cache: 'no-store' });
@@ -545,47 +613,43 @@ export function mountScratchPad(body, opts) {
   });
 
   editor.addEventListener('keydown', (e) => {
-    const line = e.target instanceof Node ? lineFromNode(e.target) : null;
+    if (e.isComposing) return;
+    const line = e.target instanceof Node ? lineFromNode(e.target) : lineFromNode(window.getSelection()?.anchorNode ?? null);
     if (!line) return;
     const isList =
       line.classList.contains('scratch-line--check') || line.classList.contains('scratch-line--bullet');
     if (!isList) return;
 
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
-      if (!lineText(line).trim()) {
-        const plain = makePlainLine('');
-        const prev = pendingDeletes.get(line);
-        if (prev) {
-          clearTimeout(prev);
-          pendingDeletes.delete(line);
-        }
-        line.replaceWith(plain);
-        focusLineEnd(plain);
+      const text = lineText(line);
+      const offset = caretOffsetInLine(line);
+      const at = offset == null ? text.length : offset;
+      // Empty checklist/bullet line → leave list mode (plain line).
+      if (!text.trim()) {
+        exitListFormatting(line, { focus: 'end' });
         syncFromEditor();
         return;
       }
+      const before = text.slice(0, at);
+      const after = text.slice(at);
+      setLineText(line, before);
       const next = line.classList.contains('scratch-line--check')
-        ? makeCheckLine('', false)
-        : makeBulletLine('');
+        ? makeCheckLine(after, false)
+        : makeBulletLine(after);
       line.after(next);
-      focusLineEnd(next);
+      focusLineStart(next);
       syncFromEditor();
       return;
     }
 
-    if (e.key === 'Backspace' && !lineText(line)) {
+    // Backspace at the start of a check/bullet line erases the marker and
+    // exits list formatting for that line (text is kept).
+    if (e.key === 'Backspace' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const offset = caretOffsetInLine(line);
+      if (offset !== 0) return;
       e.preventDefault();
-      const prev = pendingDeletes.get(line);
-      if (prev) {
-        clearTimeout(prev);
-        pendingDeletes.delete(line);
-      }
-      const previous = line.previousElementSibling;
-      line.remove();
-      if (!editor.querySelector('.scratch-line')) editor.append(makePlainLine(''));
-      const focus = previous instanceof HTMLElement ? previous : editor.querySelector('.scratch-line');
-      if (focus instanceof HTMLElement) focusLineEnd(focus);
+      exitListFormatting(line, { focus: 'start' });
       syncFromEditor();
     }
   });

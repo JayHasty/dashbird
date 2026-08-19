@@ -55,12 +55,14 @@ Return JSON only:
   "earlyBirdPrice": string | null,
   "earlyBirdStart": "YYYY-MM-DD" | null,
   "earlyBirdEnd": "YYYY-MM-DD" | null,
+  "gatesOpen": string | null,
   "notes": string | null
 }
 Report facts about the NEXT (upcoming) edition of the event.
 Use ISO dates only. ticketPrice is the regular/standard ticket price as a short label like "$299" or "$120–$1,553".
 ticketSalesStart is the date general/standard tickets go on sale for the upcoming edition (null if unknown or already on sale).
 earlyBirdPrice is the cheaper early bird / advance ticket price if one is offered (e.g. "$99"); null if none.
+gatesOpen is when attendees may first enter (gates / doors / check-in / camping arrival) for the upcoming edition — e.g. "12:01am Sun Aug 30, 2026" or "7:00am Wed Sep 30 (24h after)". Always look for this on festival/camping pages; null for conferences without a gate or when unknown.
 If unsure, use null. Prefer the official event site over aggregators/resellers.`;
 
 /** @type {Set<string>} */
@@ -2037,6 +2039,7 @@ function extractHeuristic(query, pages) {
     ticketPrice: null,
     earlyBirdStart: null,
     earlyBirdEnd: null,
+    gatesOpen: null,
     notes: null,
   };
 
@@ -2045,6 +2048,11 @@ function extractHeuristic(query, pages) {
 
   const earlyBird = blob.match(/early\s+bird[^.\n]{0,120}/i);
   if (earlyBird) out.notes = earlyBird[0].trim().slice(0, 200);
+
+  const gates = blob.match(
+    /(?:gates?|doors?)\s+(?:are\s+)?open(?:s|ing)?(?:\s+to\s+(?:the\s+)?(?:public|attendees?))?[^.!\n]{0,140}/i,
+  );
+  if (gates) out.gatesOpen = gates[0].replace(/\s+/g, ' ').trim().slice(0, 200);
 
   const isoDates = [...blob.matchAll(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/g)]
     .map((m) => {
@@ -2288,8 +2296,28 @@ export async function researchConferenceQuery(query, env = process.env, opts = {
     const eventStart = normalizeYmd(firstNonEmpty(homeParsed?.eventStart, ticketParsed?.eventStart));
     const eventEnd = normalizeYmd(firstNonEmpty(homeParsed?.eventEnd, ticketParsed?.eventEnd));
     const venue = String(firstNonEmpty(homeParsed?.venue, ticketParsed?.venue) || '').trim().slice(0, 160) || null;
-    const city = String(firstNonEmpty(homeParsed?.city, ticketParsed?.city) || '').trim().slice(0, 80) || null;
     const parsedName = String(firstNonEmpty(homeParsed?.name, ticketParsed?.name) || '').trim().slice(0, 160) || null;
+    const city = String(firstNonEmpty(homeParsed?.city, ticketParsed?.city) || '').trim().slice(0, 80) || null;
+    let resolvedCity = city || existing.city || null;
+    // When scrape left city blank, look it up online (search + optional LLM).
+    if (!resolvedCity) {
+      try {
+        const { lookupEventCityOnline } = await import('./events-finder-city-lookup.js');
+        const looked = await lookupEventCityOnline(
+          {
+            name: parsedName || q,
+            query: q,
+            venue: venue || existing.venue,
+            url: homepageUrl || ticketUrl,
+            year,
+          },
+          env,
+        );
+        if (looked.city) resolvedCity = looked.city;
+      } catch (e) {
+        console.warn('[conference-watch] city lookup failed', String(e?.message || e).slice(0, 160));
+      }
+    }
     const notes = String(firstNonEmpty(homeParsed?.notes, ticketParsed?.notes) || '').trim().slice(0, 400) || null;
     const earlyBirdPrice =
       String(firstNonEmpty(ticketParsed?.earlyBirdPrice, homeParsed?.earlyBirdPrice) || '').trim().slice(0, 120) || null;
@@ -2298,6 +2326,8 @@ export async function researchConferenceQuery(query, env = process.env, opts = {
     let ticketSalesStart = normalizeYmd(
       firstNonEmpty(ticketParsed?.ticketSalesStart, homeParsed?.ticketSalesStart),
     );
+    const gatesOpen =
+      String(firstNonEmpty(homeParsed?.gatesOpen, ticketParsed?.gatesOpen) || '').trim().slice(0, 200) || null;
 
     let ticketPrice =
       String(firstNonEmpty(ticketParsed?.ticketPrice, homeParsed?.ticketPrice) || '').trim().slice(0, 120) || null;
@@ -2476,8 +2506,17 @@ export async function researchConferenceQuery(query, env = process.env, opts = {
         if (ymd) finalEndOut = ymd;
       } else if (correction.field === 'notes') {
         finalNotes = ev;
+      } else if (correction.field === 'gatesOpen') {
+        // Applied below via finalGatesOpen.
       }
     }
+    const finalGatesOpen =
+      (correction?.field === 'gatesOpen' && correction.expectedValue
+        ? String(correction.expectedValue).trim().slice(0, 200)
+        : null)
+      || gatesOpen
+      || existing.gatesOpen
+      || null;
     if (correction) {
       const wireKey = correction.field || 'general';
       const scrapedMatch = (() => {
@@ -2488,9 +2527,10 @@ export async function researchConferenceQuery(query, env = process.env, opts = {
           eventStart: finalStartOut,
           eventEnd: finalEndOut,
           notes: finalNotes,
+          gatesOpen: finalGatesOpen,
           ticketSalesStart: ticketSalesStart || existing.ticketSalesStart || null,
           venue: venue || existing.venue || null,
-          city: city || existing.city || null,
+          city: resolvedCity || existing.city || null,
         }[correction.field];
         if (!correction.expectedValue) return Boolean(got);
         return String(got || '').toLowerCase().includes(
@@ -2522,7 +2562,7 @@ export async function researchConferenceQuery(query, env = process.env, opts = {
       eventStart: finalStartOut,
       eventEnd: finalEndOut,
       venue: venue || existing.venue || null,
-      city: city || existing.city || null,
+      city: resolvedCity || existing.city || null,
       ticketPrice: finalTicketPrice,
       ticketPriceEstimated,
       estimatedFromYear,
@@ -2530,6 +2570,7 @@ export async function researchConferenceQuery(query, env = process.env, opts = {
       earlyBirdStart: earlyBirdStart || existing.earlyBirdStart || null,
       earlyBirdEnd: earlyBirdEnd || existing.earlyBirdEnd || null,
       ticketSalesStart: ticketSalesStart || existing.ticketSalesStart || null,
+      gatesOpen: finalGatesOpen,
       screenshotPath: screenshotPath || existing.screenshotPath || null,
       flierPath,
       flierCheckedAt,
@@ -2784,6 +2825,7 @@ export function conferenceRecordToHeadsUp(record, now = new Date()) {
     earlyBirdLine: eb?.text || null,
     earlyBirdKind: eb?.kind || null,
     ticketSalesStart: record.ticketSalesStart || null,
+    gatesOpen: record.gatesOpen || null,
     salesStartLine,
     salesStatus: sales.text,
     salesStatusKind: sales.kind,

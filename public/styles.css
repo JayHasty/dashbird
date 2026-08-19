@@ -1310,12 +1310,277 @@ body.dashy--deferred-ready .boot-deferred {
   font-size: 0.78rem;
   color: #9ddea8;
 }
+.events-finder__conference-popout--logistics {
+  width: min(96rem, 100%);
+  height: min(86vh, 100%);
+}
+
+.events-finder__conference-popout-body--logistics {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.events-finder__conference-popout-body--logistics > .events-finder__logistics:not(.events-finder__logistics--split) {
+  padding: 1rem 1.1rem 1.15rem;
+  overflow: auto;
+}
+
 .events-finder__notable-detail,
 .events-finder__logistics {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
 }
+
+.events-finder__logistics--split {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+}
+
+.events-finder__logistics-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem 1.1rem 1.15rem;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.events-finder__logistics-side-rail {
+  flex: 0 0 50%;
+  width: 50%;
+  max-width: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-left: 1px solid rgba(255, 200, 120, 0.16);
+  background: rgba(255, 180, 80, 0.04);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.events-finder__logistics-rail-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0.65rem 0.75rem 0;
+  border-bottom: 1px solid rgba(255, 200, 120, 0.14);
+}
+
+.events-finder__logistics-rail-tabs-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.events-finder__logistics-add-module-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-bottom: 0.15rem;
+}
+
+.events-finder__logistics-add-module {
+  appearance: none;
+  border: 1px solid rgba(255, 210, 140, 0.35);
+  background: rgba(255, 210, 140, 0.1);
+  color: #ffd28c;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.events-finder__logistics-add-module:hover,
+.events-finder__logistics-add-module:focus-visible {
+  background: rgba(255, 210, 140, 0.2);
+  border-color: rgba(255, 210, 140, 0.55);
+}
+
+.events-finder__logistics-add-module-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 5;
+  min-width: 11rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 200, 120, 0.22);
+  background: rgba(18, 16, 12, 0.96);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.events-finder__logistics-add-module-menu[hidden] {
+  display: none !important;
+}
+
+.events-finder__logistics-add-module-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.events-finder__logistics-add-module-item:hover,
+.events-finder__logistics-add-module-item:focus-visible {
+  background: rgba(255, 210, 140, 0.14);
+  color: #ffd28c;
+}
+
+.events-finder__logistics-rail-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+}
+
+.events-finder__logistics-rail-tab:hover {
+  color: #ffd28c;
+  background: rgba(255, 210, 140, 0.08);
+}
+
+.events-finder__logistics-rail-tab--active {
+  color: #2a1a05;
+  background: #ffd28c;
+}
+
+.events-finder__logistics-rail-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.85rem 0.9rem 1.15rem;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.events-finder__logistics-rail-panel[hidden] {
+  display: none !important;
+}
+
+.events-finder__logistics-brief-mount {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.events-finder__logistics-module-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.55rem;
+  flex-shrink: 0;
+}
+
+.events-finder__logistics-module-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.events-finder__logistics-camping-ok {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #9ecbff;
+}
+
+.events-finder__logistics-dest-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.1rem 0 0.25rem;
+}
+
+.events-finder__logistics-dest-label {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.events-finder__logistics-dest-seg {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.events-finder__logistics-dest-opt {
+  flex: 1 1 0;
+  appearance: none;
+  border: 1px solid rgba(158, 203, 255, 0.28);
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.82);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.events-finder__logistics-dest-opt:hover {
+  border-color: rgba(158, 203, 255, 0.45);
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.events-finder__logistics-dest-opt--active {
+  border-color: rgba(158, 203, 255, 0.65);
+  background: rgba(50, 90, 130, 0.55);
+  color: #fff;
+}
+
+.events-finder__logistics-price-hint {
+  color: #ffd28c;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .events-finder__logistics--split {
+    flex-direction: column;
+  }
+
+  .events-finder__logistics-side-rail {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    border-left: none;
+    border-top: 1px solid rgba(255, 200, 120, 0.16);
+    max-height: min(52vh, 32rem);
+  }
+}
+
 .events-finder__notable-subtitle {
   margin: 0.4rem 0 0;
   font-size: 0.92rem;
@@ -1390,6 +1655,405 @@ body.dashy--deferred-ready .boot-deferred {
 .events-finder__logistics-list p {
   margin: 0.15rem 0 0;
   font-size: 0.78rem;
+}
+.events-finder__flight-module {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+}
+.events-finder__flight-offer {
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.events-finder__flight-offer a {
+  color: #9ecbff;
+  font-size: 0.82rem;
+}
+.events-finder__flight-buy {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #ffd28c;
+}
+.events-finder__flight-meta {
+  margin: 0;
+  font-size: 0.8rem;
+}
+.events-finder__logistics-weather {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 210, 140, 0.22);
+  background: linear-gradient(
+    165deg,
+    rgba(40, 55, 78, 0.55),
+    rgba(20, 28, 40, 0.4)
+  );
+}
+.events-finder__logistics-brief .events-finder__logistics-weather {
+  padding: 0.45rem 0.5rem 0.55rem;
+}
+.events-finder__logistics-weather-title {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 210, 140, 0.92);
+}
+.events-finder__logistics-weather-where {
+  margin: 0;
+  font-size: 0.78rem;
+}
+.events-finder__logistics-weather-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.events-finder__logistics-brief .events-finder__logistics-weather-day {
+  flex: 1 1 4.6rem;
+  min-width: 4.4rem;
+  max-width: none;
+}
+.events-finder__logistics-weather-day {
+  flex: 1 1 5.5rem;
+  min-width: 5.2rem;
+  max-width: 7.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.35rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  text-align: center;
+}
+.events-finder__logistics-weather-weekday {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.events-finder__logistics-weather-icon.fluent-weather-icon.poly-weather-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+}
+.events-finder__logistics-weather-temps {
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+.events-finder__logistics-weather-summary {
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+.events-finder__logistics-weather-more {
+  align-self: flex-start;
+  color: #ffd28c;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.events-finder__packing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.15rem;
+}
+
+.events-finder__packing-head .events-finder__notable-subtitle {
+  margin-top: 0;
+}
+
+.events-finder__packing-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.events-finder__packing-empty {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.events-finder__packing-cat {
+  border: 1px solid rgba(255, 200, 120, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 0.45rem 0.5rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.events-finder__packing-cat.is-dragging,
+.events-finder__packing-item.is-dragging {
+  opacity: 0.45;
+}
+
+.events-finder__packing-cat.is-drag-over,
+.events-finder__packing-items.is-drag-over {
+  outline: 1px dashed rgba(255, 200, 120, 0.45);
+  outline-offset: 2px;
+}
+
+.events-finder__packing-cat-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.events-finder__packing-cat-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 0.15rem 0.2rem;
+}
+
+.events-finder__packing-cat-name:focus {
+  outline: 1px solid rgba(255, 200, 120, 0.35);
+  border-radius: 4px;
+}
+
+.events-finder__packing-grip {
+  flex: 0 0 auto;
+  cursor: grab;
+  user-select: none;
+  opacity: 0.45;
+  font-size: 0.72rem;
+  letter-spacing: -0.12em;
+  line-height: 1;
+  padding: 0.15rem 0.1rem;
+  color: rgba(255, 220, 170, 0.9);
+}
+
+.events-finder__packing-grip:active {
+  cursor: grabbing;
+}
+
+.events-finder__packing-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-height: 0.25rem;
+}
+
+.events-finder__packing-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.1rem;
+  border-radius: 5px;
+}
+
+.events-finder__packing-item:hover {
+  background: rgba(255, 200, 120, 0.06);
+}
+
+.events-finder__packing-check {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+}
+
+.events-finder__packing-check input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  accent-color: #c9a46a;
+  cursor: pointer;
+}
+
+.events-finder__packing-item-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 0.15rem 0;
+}
+
+.events-finder__packing-item-text:focus {
+  outline: none;
+}
+
+.events-finder__packing-item.is-checked .events-finder__packing-item-text {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.events-finder__packing-item-del {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 180, 160, 0.75);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.events-finder__packing-item-del:hover {
+  opacity: 1;
+  background: rgba(255, 100, 80, 0.15);
+  color: #ffb4a4;
+}
+
+.events-finder__packing-add-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+  padding-left: 1.35rem;
+}
+
+.events-finder__packing-add-item-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid rgba(255, 200, 120, 0.18);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.28rem 0.45rem;
+}
+
+.events-finder__packing-add-item-input:focus {
+  outline: 1px solid rgba(255, 200, 120, 0.35);
+}
+
+.events-finder__packing-footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.events-finder__packing-add-cat {
+  font-size: 0.85rem;
+}
+
+.events-finder__logistics-weather-more:hover {
+  text-decoration: underline;
+}
+
+.events-finder__logistics-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem 0.65rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid rgba(158, 203, 255, 0.22);
+  background: linear-gradient(
+    165deg,
+    rgba(28, 48, 62, 0.55),
+    rgba(18, 26, 36, 0.42)
+  );
+}
+.events-finder__logistics-brief-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.events-finder__logistics-brief-head .events-finder__notable-subtitle {
+  margin: 0;
+}
+.events-finder__logistics-brief-refresh {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+}
+.events-finder__logistics-brief-where {
+  margin: 0;
+  font-size: 0.78rem;
+}
+.events-finder__logistics-brief-summary {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.events-finder__logistics-brief-alerts {
+  margin: 0.15rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: #ffd28c;
+}
+.events-finder__logistics-brief-items {
+  margin: 0.2rem 0 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.events-finder__logistics-brief-items li p {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+}
+.events-finder__logistics-brief-cat {
+  font-weight: 500;
+  font-size: 0.78rem;
+}
+.events-finder__logistics-brief-hint {
+  color: #9ecbff !important;
+}
+.events-finder__logistics-brief-packing-title {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+.events-finder__logistics-brief-packing {
+  margin: 0.15rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.84rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.events-finder__logistics-brief-sources-label {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.events-finder__logistics-brief-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+.events-finder__logistics-brief-sources a {
+  color: #9ecbff;
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+.events-finder__logistics-brief-sources a:hover {
+  text-decoration: underline;
+}
+.events-finder__logistics-brief-meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
 }
 
 .events-finder__nearby-feed-backdrop {
@@ -1813,6 +2477,19 @@ body.dashy--deferred-ready .boot-deferred {
 .events-finder__big-events-date-line {
   display: block;
   white-space: nowrap;
+}
+
+.events-finder__big-events-gates {
+  white-space: normal;
+  max-width: 14rem;
+  font-size: 0.78em;
+  opacity: 0.85;
+  margin-top: 0.15rem;
+}
+
+.events-finder__card-gates {
+  font-size: 0.9em;
+  opacity: 0.9;
 }
 
 /* Give the ticket-price column room (badges + tickets link stack inside). */
@@ -2684,8 +3361,8 @@ a.events-finder__big-events-name-text:hover {
 
 .events-finder__card-bigbadge-img {
   display: block;
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 1.4rem;
+  height: 1.4rem;
   object-fit: contain;
 }
 
@@ -19799,12 +20476,6 @@ body.dashbird-check-busy * {
 .dev-request-view__done:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.dev-request-view__hint {
-  margin: 10px 0 0;
-  font-size: 9px;
-  color: #6a5040;
 }
 
 body.dev-request-view-open {

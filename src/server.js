@@ -88,6 +88,8 @@ import { startLocalNewsScheduler } from './lib/local-news-scheduler.js';
 import { startJobWatchScheduler } from './lib/job-watch-scheduler.js';
 import jobWatchRouter from './routes/job-watch.js';
 import { startBigEventsDailyRefreshScheduler } from './lib/events-finder-conference-watchlist-schedule.js';
+import { startFlightModuleScheduler } from './lib/events-finder-flight-module.js';
+import { startTravelBriefDailyRefreshScheduler } from './lib/events-finder-travel-brief.js';
 
 import { startGmailWeeklySummaryScheduler } from './lib/gmail-weekly-summary-synth.js';
 import eventsFinderTelegramRouter from './routes/events-finder-telegram.js';
@@ -272,6 +274,8 @@ app.listen(port, '0.0.0.0', () => {
   kick(() => startLocalNewsScheduler(), 1150);
   kick(() => startJobWatchScheduler(), 1160);
   kick(() => startBigEventsDailyRefreshScheduler(), 1175);
+  kick(() => startFlightModuleScheduler(), 1185);
+  kick(() => startTravelBriefDailyRefreshScheduler(), 1195);
   kick(() => startGmailWeeklySummaryScheduler(), 1250);
   kick(() => warmGoogleCalendarCache(), 1200);
   kick(() => startCalendarPresenceIndexScheduler(), 1500);

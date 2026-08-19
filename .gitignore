@@ -42,6 +42,8 @@ data/webpage-listings-events-cache.json
 data/events-finder-notable.json
 data/events-finder-series-watches.json
 data/events-finder-site-passwords.json
+data/events-finder-travel-briefs.json
+data/events-finder-flight-modules.json
 data/luma-events-cache.json
 data/gcal-ics-events-cache.json
 data/telegram-events-offset.json

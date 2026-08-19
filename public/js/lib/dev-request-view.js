@@ -64,11 +64,7 @@ function ensureMounted() {
   listEl = document.createElement('div');
   listEl.className = 'dev-request-view__list';
 
-  const hint = document.createElement('p');
-  hint.className = 'dev-request-view__hint';
-  hint.textContent = 'Also in data/dev-requests/inbox.md for Cursor agents.';
-
-  panel.append(header, statusEl, listEl, hint);
+  panel.append(header, statusEl, listEl);
   document.body.append(backdrop, panel);
 
   closeBtn.addEventListener('click', closeDevRequestsViewer);

@@ -26,7 +26,13 @@ const PKG_ROOT = path.join(fileURLToPath(new URL('.', import.meta.url)), '..', '
  *   notes: string | null,
  *   planningNotes: string | null,
  *   tripPlanning: {
- *     packingList: string | null,
+ *     packingList: {
+ *       categories: {
+ *         id: string,
+ *         name: string,
+ *         items: { id: string, text: string, checked: boolean }[],
+ *       }[],
+ *     } | null,
  *     accommodations: string | null,
  *     flightsTransport: string | null,
  *     beforeTrip: string | null,

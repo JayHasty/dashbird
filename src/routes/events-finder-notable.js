@@ -17,8 +17,23 @@ import {
 } from '../lib/events-finder-store.js';
 import { fetchNormalizedEventFromUrl } from '../lib/events-finder-public-pages.js';
 import { assertPublicHttpUrl } from '../lib/public-http-url.js';
-import { buildEventLogistics } from '../lib/events-finder-travel-logistics.js';
+import { buildEventLogistics, resolveLogisticsLatLon, fetchEventLogisticsWeather } from '../lib/events-finder-travel-logistics.js';
 import { loadEventsFinderCriteria } from '../lib/events-finder-criteria-store.js';
+import {
+  getFlightModule,
+  upsertFlightModule,
+} from '../lib/events-finder-flight-module.js';
+import {
+  ensureTravelBriefForLogistics,
+  publicTravelBrief,
+  refreshTravelBrief,
+} from '../lib/events-finder-travel-brief.js';
+import {
+  getLogisticsModule,
+  publicLogisticsModule,
+  upsertLogisticsModule,
+} from '../lib/events-finder-logistics-modules.js';
+import { geocodeAddress } from '../lib/geocode-address.js';
 
 const router = Router();
 router.use(express.json({ limit: '256kb' }));
@@ -64,7 +79,7 @@ router.get('/', async (_req, res) => {
   }
 });
 
-/** GET /:id/logistics — planning pack (map, flights links, nearby events). */
+/** GET /:id/logistics — planning pack (map, nearby events; flights via opt-in module). */
 router.get('/:id/logistics', async (req, res) => {
   try {
     const id = String(req.params.id || '').trim();
@@ -80,12 +95,19 @@ router.get('/:id/logistics', async (req, res) => {
       return;
     }
     const merged = applyNotableToEvent(event, notable);
+    if (!resolveLogisticsLatLon(merged) && merged.city) {
+      const geo = await geocodeAddress(merged.city, { countrycodes: null }).catch(() => null);
+      if (geo) {
+        merged.lat = geo.lat;
+        merged.lon = geo.lon;
+      }
+    }
     const catalog = listEventsFinderEvents({ limit: 2000 }).map((ev) => {
       const n = store[String(ev.id || '')];
       return n ? applyNotableToEvent(ev, n) : ev;
     });
     const criteria = await loadEventsFinderCriteria();
-    const logistics = buildEventLogistics(merged, catalog, {
+    const logistics = await buildEventLogistics(merged, catalog, {
       taste: {
         lookFor: criteria.lookFor,
         skip: criteria.skip,
@@ -93,8 +115,276 @@ router.get('/:id/logistics', async (req, res) => {
       },
       tripPlanning: notable?.tripPlanning,
     });
+    const flightModule = await getFlightModule('notable', id, process.env);
+    const [transportMod, staysMod] = await Promise.all([
+      getLogisticsModule('notable', id, 'transportation', process.env),
+      getLogisticsModule('notable', id, 'accommodations', process.env),
+    ]);
+    const travelBriefPack = await ensureTravelBriefForLogistics(
+      {
+        kind: 'notable',
+        id,
+        city: merged.city,
+        start: merged.start,
+        end: merged.end,
+        lat: merged.lat,
+        lon: merged.lon,
+        title: merged.title,
+      },
+      process.env,
+      { wait: false },
+    );
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json(logistics);
+    res.json({
+      ...logistics,
+      travelBrief: travelBriefPack.eligible
+        ? publicTravelBrief(travelBriefPack.brief) || {
+            ok: false,
+            researching: true,
+            city: merged.city || null,
+            summary: null,
+            items: [],
+            packingTips: [],
+            sources: [],
+            nwsAlerts: [],
+            generatedAt: null,
+            error: null,
+            fresh: false,
+          }
+        : null,
+      flightModule: flightModule
+        ? {
+            enabled: flightModule.enabled,
+            destination: flightModule.destination,
+            destinationCity: flightModule.destinationCity,
+            departDate: flightModule.departDate,
+            origins: flightModule.origins,
+            cheapest: flightModule.cheapest,
+            best: flightModule.best,
+            priceTier: flightModule.priceTier,
+            buyByDate: flightModule.buyByDate,
+            buyByReason: flightModule.buyByReason,
+            googleFlightsUrl: flightModule.googleFlightsUrl,
+            lastCheckedAt: flightModule.lastCheckedAt,
+            nextCheckAt: flightModule.nextCheckAt,
+            checking: flightModule.checking,
+            error: flightModule.error,
+            historyPoints: flightModule.priceHistory?.length || 0,
+          }
+        : { enabled: false },
+      logisticsModules: {
+        transportation: publicLogisticsModule(transportMod) || { enabled: false, type: 'transportation' },
+        accommodations: publicLogisticsModule(staysMod) || { enabled: false, type: 'accommodations' },
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /:id/travel-brief — refresh local conditions / packing brief.
+ * Body: { refresh?: boolean }
+ */
+router.post('/:id/travel-brief', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) {
+      res.status(400).json({ ok: false, error: 'missing_id' });
+      return;
+    }
+    const store = await loadNotableEventsStore();
+    const notable = store[id] || null;
+    const event = getEventsFinderEventById(id);
+    if (!event) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const merged = applyNotableToEvent(event, notable);
+    if (!resolveLogisticsLatLon(merged) && merged.city) {
+      const geo = await geocodeAddress(merged.city, { countrycodes: null }).catch(() => null);
+      if (geo) {
+        merged.lat = geo.lat;
+        merged.lon = geo.lon;
+      }
+    }
+    const city = String(merged.city || '').trim();
+    if (!city) {
+      res.status(400).json({ ok: false, error: 'missing_city' });
+      return;
+    }
+    const brief = await refreshTravelBrief(
+      {
+        kind: 'notable',
+        id,
+        city,
+        start: merged.start,
+        end: merged.end,
+        lat: merged.lat,
+        lon: merged.lon,
+        title: merged.title,
+      },
+      process.env,
+      { force: req.body?.refresh !== false },
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, travelBrief: publicTravelBrief(brief) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * GET /:id/logistics-module/:type — transportation | accommodations research state.
+ */
+router.get('/:id/logistics-module/:type', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    const type =
+      String(req.params.type || '') === 'accommodations' ? 'accommodations' : 'transportation';
+    if (!id) {
+      res.status(400).json({ ok: false, error: 'missing_id' });
+      return;
+    }
+    const event = getEventsFinderEventById(id);
+    if (!event) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const mod = await getLogisticsModule('notable', id, type, process.env);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      ok: true,
+      module: publicLogisticsModule(mod) || { enabled: false, type },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /:id/logistics-module/:type — enable/disable + research transport/stays.
+ * Body: { enabled?: boolean, refresh?: boolean }
+ */
+router.post('/:id/logistics-module/:type', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    const type =
+      String(req.params.type || '') === 'accommodations' ? 'accommodations' : 'transportation';
+    if (!id) {
+      res.status(400).json({ ok: false, error: 'missing_id' });
+      return;
+    }
+    const store = await loadNotableEventsStore();
+    const notable = store[id] || null;
+    const event = getEventsFinderEventById(id);
+    if (!event) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const merged = applyNotableToEvent(event, notable);
+    if (!resolveLogisticsLatLon(merged) && merged.city) {
+      const geo = await geocodeAddress(merged.city, { countrycodes: null }).catch(() => null);
+      if (geo) {
+        merged.lat = geo.lat;
+        merged.lon = geo.lon;
+      }
+    }
+    const coords = resolveLogisticsLatLon(merged);
+    const enabled = req.body?.enabled !== false;
+    const forceRefresh = req.body?.refresh === true;
+    /** @type {object | null} */
+    let weather = null;
+    if (type === 'accommodations' && enabled && coords) {
+      weather = await fetchEventLogisticsWeather(coords.lat, coords.lon, merged);
+    }
+    const mod = await upsertLogisticsModule(
+      {
+        kind: 'notable',
+        id,
+        type,
+        event: merged,
+        weather,
+        enabled,
+        forceRefresh: forceRefresh || enabled,
+        wait: false,
+      },
+      process.env,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, module: publicLogisticsModule(mod) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * GET /:id/flight-module — current Google Flights watch state.
+ */
+router.get('/:id/flight-module', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) {
+      res.status(400).json({ ok: false, error: 'missing_id' });
+      return;
+    }
+    const event = getEventsFinderEventById(id);
+    if (!event) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const flightModule = await getFlightModule('notable', id, process.env);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      ok: true,
+      flightModule: flightModule || { enabled: false },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /:id/flight-module — enable/disable Google Flights watch.
+ * Body: { enabled?: boolean, refresh?: boolean }
+ */
+router.post('/:id/flight-module', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) {
+      res.status(400).json({ ok: false, error: 'missing_id' });
+      return;
+    }
+    const store = await loadNotableEventsStore();
+    const notable = store[id] || null;
+    const event = getEventsFinderEventById(id);
+    if (!event) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const merged = applyNotableToEvent(event, notable);
+    if (!resolveLogisticsLatLon(merged) && merged.city) {
+      const geo = await geocodeAddress(merged.city, { countrycodes: null }).catch(() => null);
+      if (geo) {
+        merged.lat = geo.lat;
+        merged.lon = geo.lon;
+      }
+    }
+    const enabled = req.body?.enabled !== false;
+    const forceRefresh = req.body?.refresh === true;
+    const flightModule = await upsertFlightModule(
+      {
+        kind: 'notable',
+        id,
+        event: merged,
+        enabled,
+        forceRefresh: forceRefresh || enabled,
+        wait: false,
+      },
+      process.env,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, flightModule });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -282,103 +572,6 @@ router.patch('/:id', async (req, res) => {
 
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, item: packItem(id, notable) });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
-
-/**
- * POST /:id/rescrape — re-fetch the event URL and merge parsed fields.
- * Does not overwrite fields already in overrides unless `force: true`.
- */
-router.post('/:id/rescrape', async (req, res) => {
-  try {
-    const id = String(req.params.id || '').trim();
-    if (!id) {
-      res.status(400).json({ ok: false, error: 'missing_id' });
-      return;
-    }
-    const force = req.body?.force === true;
-    const store = await loadNotableEventsStore();
-    const notable = store[id] || null;
-    const event = getEventsFinderEventById(id);
-    if (!event) {
-      res.status(404).json({ ok: false, error: 'event_not_in_catalog' });
-      return;
-    }
-    const url = String(notable?.overrides?.url || event.url || '').trim();
-    if (!url) {
-      res.status(422).json({ ok: false, error: 'missing_url' });
-      return;
-    }
-    let safeUrl;
-    try {
-      safeUrl = await assertPublicHttpUrl(url);
-    } catch (e) {
-      res.status(400).json({ ok: false, error: String(e?.message || e) });
-      return;
-    }
-
-    const scraped = await fetchNormalizedEventFromUrl(safeUrl, String(event.source || 'webpage'));
-    if (!scraped) {
-      res.status(422).json({ ok: false, error: 'scrape_empty' });
-      return;
-    }
-
-    const locked = force ? {} : notable?.overrides || {};
-    /** @type {Record<string, unknown>} */
-    const catalogPatch = { manualEdit: notable?.manualEdit === true && !force };
-    for (const [key, val] of Object.entries({
-      title: scraped.title,
-      start: scraped.start,
-      end: scraped.end,
-      venue: scraped.venue || scraped.location,
-      city: scraped.city,
-      lat: scraped.lat,
-      lon: scraped.lon,
-      description: scraped.description,
-      url: scraped.url || safeUrl,
-      priceLabel: scraped.priceLabel,
-      imageUrl: scraped.imageUrl,
-    })) {
-      if (val == null || val === '') continue;
-      if (!force && locked[key] != null && locked[key] !== '') continue;
-      catalogPatch[key] = val;
-    }
-
-    upsertEventsFinderEvents([{ ...event, ...catalogPatch }], process.env);
-    const updated = getEventsFinderEventById(id);
-
-    /** Keep notable flag; clear override keys that were refreshed when force. */
-    let nextNotable = notable;
-    if (notable?.notable || req.body?.keepNotable !== false) {
-      /** @type {Record<string, unknown>} */
-      const nPatch = { notable: true };
-      if (force) {
-        nPatch.overrides = {};
-        nPatch.manualEdit = false;
-      }
-      if (scraped.priceLabel && (!notable?.ticketPrice || force)) {
-        nPatch.ticketPrice = String(scraped.priceLabel).slice(0, 80);
-      }
-      nextNotable = await upsertNotableEvent(id, nPatch);
-    }
-
-    res.setHeader('Cache-Control', 'private, no-store');
-    res.json({
-      ok: true,
-      scraped: {
-        title: scraped.title || null,
-        start: scraped.start || null,
-        end: scraped.end || null,
-        venue: scraped.venue || scraped.location || null,
-        city: scraped.city || null,
-        priceLabel: scraped.priceLabel || null,
-        url: scraped.url || safeUrl,
-      },
-      item: packItem(id, nextNotable),
-      event: updated ? applyNotableToEvent(updated, nextNotable) : null,
-    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

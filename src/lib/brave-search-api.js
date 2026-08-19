@@ -56,11 +56,11 @@ async function getJson(url, key) {
 }
 
 /**
- * Web search → ranked result URLs + titles.
+ * Web search → ranked result URLs + titles (+ description when Brave provides it).
  * @param {string} query
  * @param {number} [limit]
  * @param {NodeJS.ProcessEnv} [env]
- * @returns {Promise<Array<{ url: string, title: string }>>}
+ * @returns {Promise<Array<{ url: string, title: string, description: string }>>}
  */
 export async function braveApiWebSearch(query, limit = 8, env = process.env) {
   const key = apiKey(env);
@@ -71,13 +71,17 @@ export async function braveApiWebSearch(query, limit = 8, env = process.env) {
   const data = await getJson(url, key);
   const results = data?.web?.results;
   if (!Array.isArray(results)) return [];
-  /** @type {Array<{ url: string, title: string }>} */
+  /** @type {Array<{ url: string, title: string, description: string }>} */
   const out = [];
   for (const r of results) {
     const u = String(r?.url || '').trim();
     if (!/^https?:\/\//i.test(u)) continue;
     if (out.some((x) => x.url === u)) continue;
-    out.push({ url: u, title: String(r?.title || '') });
+    out.push({
+      url: u,
+      title: String(r?.title || ''),
+      description: String(r?.description || '').trim().slice(0, 500),
+    });
     if (out.length >= count) break;
   }
   return out;

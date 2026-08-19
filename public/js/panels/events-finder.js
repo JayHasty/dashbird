@@ -11,6 +11,7 @@ import {
 } from './events-filter-ui.js?v=attendance-online-1';
 import { readPanelCache, writePanelCache } from '../lib/panel-cache.js';
 import { beginWaitCursor, endWaitCursor } from '../lib/wait-cursor.js';
+import { createPolygonWeatherIcon } from './weather-polygon.js';
 
 const SHOW_SKIPPED_KEY = 'dashbird.events.showSkipped';
 const FILTER_AUTOSAVE_MS = 650;
@@ -718,7 +719,9 @@ export function mountEventsFinder(root) {
     const backdrop = document.createElement('div');
     backdrop.className = 'events-finder__conference-popout-backdrop';
     const shell = document.createElement('div');
-    shell.className = 'events-finder__conference-popout';
+    shell.className = ['events-finder__conference-popout', opts.shellClass]
+      .filter(Boolean)
+      .join(' ');
     shell.setAttribute('role', 'dialog');
     shell.setAttribute('aria-modal', 'true');
 
@@ -737,7 +740,9 @@ export function mountEventsFinder(root) {
     bar.append(title, closeBtn);
 
     const body = document.createElement('div');
-    body.className = 'events-finder__conference-popout-body';
+    body.className = ['events-finder__conference-popout-body', opts.bodyClass]
+      .filter(Boolean)
+      .join(' ');
     body.append(opts.body);
 
     shell.append(bar, body);
@@ -994,6 +999,12 @@ export function mountEventsFinder(root) {
     } else {
       dateCell.textContent = whenLabel;
     }
+    if (item.gatesOpen) {
+      const gatesLine = document.createElement('span');
+      gatesLine.className = 'events-finder__big-events-date-line events-finder__big-events-gates';
+      gatesLine.textContent = `Gates: ${item.gatesOpen}`;
+      dateCell.append(gatesLine);
+    }
     makeCorrectable(dateCell, item, 'eventStart', 'Event dates');
 
     // Ticket price (+ estimated badge + early bird note).
@@ -1166,6 +1177,10 @@ export function mountEventsFinder(root) {
     const cityI = field('City', 'text', item.city || '');
     const priceI = field('Ticket price', 'text', item.ticketPrice || '');
     const salesI = field('On-sale date', 'date', item.ticketSalesStart || '');
+    const gatesI = field('Gates open', 'text', item.gatesOpen || '', true);
+    if (gatesI instanceof HTMLInputElement) {
+      gatesI.placeholder = 'e.g. 12:01am Sun Aug 30 · 7am Wed Sep 30';
+    }
     const ebPriceI = field('Early bird price', 'text', item.earlyBirdPrice || '');
     const ebStartI = field('Early bird start', 'date', item.earlyBirdStart || '');
     const ebEndI = field('Early bird end', 'date', item.earlyBirdEnd || '');
@@ -1265,6 +1280,7 @@ export function mountEventsFinder(root) {
           city: cityI.value.trim(),
           ticketPrice: priceI.value.trim(),
           ticketSalesStart: salesI.value,
+          gatesOpen: gatesI.value.trim(),
           earlyBirdPrice: ebPriceI.value.trim(),
           earlyBirdStart: ebStartI.value,
           earlyBirdEnd: ebEndI.value,
@@ -1426,7 +1442,26 @@ export function mountEventsFinder(root) {
   function hasLogisticsNotes(notes, tripPlanning = null) {
     if (String(notes || '').trim()) return true;
     if (tripPlanning && typeof tripPlanning === 'object') {
-      return Object.values(tripPlanning).some((v) => String(v || '').trim());
+      const tp = /** @type {Record<string, unknown>} */ (tripPlanning);
+      if (tp.packingList && typeof tp.packingList === 'object') {
+        const cats = /** @type {{ categories?: unknown[] }} */ (tp.packingList).categories;
+        if (Array.isArray(cats) && cats.length) return true;
+      } else if (String(tp.packingList || '').trim()) {
+        return true;
+      }
+      return ['accommodations', 'flightsTransport', 'beforeTrip', 'notes'].some((k) =>
+        String(tp[k] || '').trim(),
+      )
+        || Boolean(
+          tp.modules
+          && typeof tp.modules === 'object'
+          && Object.values(/** @type {Record<string, any>} */ (tp.modules)).some(
+            (m) =>
+              m
+              && typeof m === 'object'
+              && (m.enabled === true || String(m.notes || '').trim()),
+          ),
+        );
     }
     return false;
   }
@@ -3404,6 +3439,13 @@ export function mountEventsFinder(root) {
     whenEl.textContent = String(item.whenLabel || 'Dates TBD');
     body.append(whenEl);
 
+    if (item.gatesOpen) {
+      const gatesEl = document.createElement('p');
+      gatesEl.className = 'events-finder__conference-detail-place';
+      gatesEl.textContent = `Gates open: ${item.gatesOpen}`;
+      body.append(gatesEl);
+    }
+
     if (item.placeLabel) {
       const placeEl = document.createElement('p');
       placeEl.className = 'events-finder__conference-detail-place';
@@ -3618,6 +3660,13 @@ export function mountEventsFinder(root) {
     meta.className = 'events-finder__card-meta';
     meta.textContent = item.whenLabel || 'Dates TBD';
 
+    let gatesMeta = null;
+    if (item.gatesOpen) {
+      gatesMeta = document.createElement('p');
+      gatesMeta.className = 'events-finder__card-meta events-finder__card-gates';
+      gatesMeta.textContent = `Gates: ${item.gatesOpen}`;
+    }
+
     // Price on its own line, green + bold (see buildEventCard for the shared look).
     const priceEl = document.createElement('p');
     priceEl.className = 'events-finder__card-price';
@@ -3660,7 +3709,16 @@ export function mountEventsFinder(root) {
     const hasLogistics = Boolean(
       item.planningNotes
       || (item.tripPlanning
-        && Object.values(item.tripPlanning).some((v) => String(v || '').trim())),
+        && (
+          (item.tripPlanning.packingList
+            && typeof item.tripPlanning.packingList === 'object'
+            && Array.isArray(item.tripPlanning.packingList.categories)
+            && item.tripPlanning.packingList.categories.length > 0)
+          || Object.entries(item.tripPlanning).some(([k, v]) => {
+            if (k === 'packingList') return typeof v === 'string' && String(v).trim();
+            return String(v || '').trim();
+          })
+        )),
     );
     logisticsBtn.textContent = hasLogistics ? 'Logistics ✓' : 'Logistics';
     logisticsBtn.addEventListener('click', (e) => {
@@ -3720,7 +3778,9 @@ export function mountEventsFinder(root) {
       actions.append(logisticsBtn, snoozeBtn, skipBtn, calBtn);
     }
 
-    card.append(snap, head, cityEl, meta, priceEl, status, actions);
+    card.append(snap, head, cityEl, meta);
+    if (gatesMeta) card.append(gatesMeta);
+    card.append(priceEl, status, actions);
     if (eventHref) {
       card.addEventListener('click', (e) => {
         if (e.target.closest('a, button')) return;
@@ -3924,6 +3984,8 @@ export function mountEventsFinder(root) {
     openConferencePopout({
       title: 'Planning & logistics',
       body,
+      shellClass: 'events-finder__conference-popout--logistics',
+      bodyClass: 'events-finder__conference-popout-body--logistics',
     });
 
     try {
@@ -3947,27 +4009,231 @@ export function mountEventsFinder(root) {
       }
 
       body.replaceChildren();
+      body.classList.add('events-finder__logistics--split');
+
+      const main = document.createElement('div');
+      main.className = 'events-finder__logistics-main';
+      const sideRail = document.createElement('aside');
+      sideRail.className = 'events-finder__logistics-side-rail';
+      sideRail.setAttribute('aria-label', 'Logistics modules');
+
+      const railTabs = document.createElement('div');
+      railTabs.className = 'events-finder__logistics-rail-tabs';
+      railTabs.setAttribute('role', 'tablist');
+      railTabs.setAttribute('aria-label', 'Logistics sidebar');
+
+      const railTabsInner = document.createElement('div');
+      railTabsInner.className = 'events-finder__logistics-rail-tabs-inner';
+      const addModuleWrap = document.createElement('div');
+      addModuleWrap.className = 'events-finder__logistics-add-module-wrap';
+      railTabs.append(railTabsInner, addModuleWrap);
+
+      /** @type {Record<string, HTMLElement>} */
+      const railPanels = {};
+      /** @type {Record<string, HTMLButtonElement>} */
+      const railTabBtns = {};
+
+      const tpSeed = data.tripPlanning || ev.tripPlanning || {};
+      const modsSeed = tpSeed.modules || {};
+      /** @type {{
+       *   local: { notes: string },
+       *   flights: { enabled: boolean, notes: string },
+       *   transportation: { enabled: boolean, notes: string, destination: 'accommodations' | 'event' },
+       *   accommodations: { enabled: boolean, notes: string },
+       * }} */
+      const moduleUi = {
+        local: { notes: String(modsSeed.local?.notes || '') },
+        flights: {
+          enabled:
+            modsSeed.flights?.enabled === true
+            || data.flightModule?.enabled === true,
+          notes: String(modsSeed.flights?.notes || tpSeed.flightsTransport || ''),
+        },
+        transportation: {
+          enabled:
+            modsSeed.transportation?.enabled === true
+            || data.logisticsModules?.transportation?.enabled === true,
+          notes: String(modsSeed.transportation?.notes || tpSeed.flightsTransport || ''),
+          destination:
+            modsSeed.transportation?.destination === 'accommodations'
+              ? 'accommodations'
+              : 'event',
+        },
+        accommodations: {
+          enabled:
+            modsSeed.accommodations?.enabled === true
+            || data.logisticsModules?.accommodations?.enabled === true,
+          notes: String(modsSeed.accommodations?.notes || tpSeed.accommodations || ''),
+        },
+      };
+
+      /** @type {string} */
+      let activeRailTab = 'local';
+
+      /**
+       * @param {string} id
+       * @param {string} label
+       */
+      function ensureRailPanel(id, label) {
+        if (railPanels[id]) return;
+        const panel = document.createElement('div');
+        panel.className = `events-finder__logistics-rail-panel events-finder__logistics-rail-panel--${id}`;
+        panel.setAttribute('role', 'tabpanel');
+        panel.id = `logistics-rail-panel-${id}`;
+        panel.hidden = id !== activeRailTab;
+        railPanels[id] = panel;
+        sideRail.append(panel);
+
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'events-finder__logistics-rail-tab';
+        tab.setAttribute('role', 'tab');
+        tab.id = `logistics-rail-tab-${id}`;
+        tab.setAttribute('aria-controls', panel.id);
+        tab.textContent = label;
+        tab.addEventListener('click', () => selectRailTab(id));
+        railTabBtns[id] = tab;
+      }
+
+      function rebuildRailTabs() {
+        railTabsInner.replaceChildren();
+        const order = ['local'];
+        if (moduleUi.flights.enabled) order.push('flights');
+        if (moduleUi.transportation.enabled) order.push('transportation');
+        if (moduleUi.accommodations.enabled) order.push('accommodations');
+        for (const id of order) {
+          const labels = {
+            local: 'Local',
+            flights: 'Flights',
+            transportation: 'Transport',
+            accommodations: 'Stays',
+          };
+          ensureRailPanel(id, labels[id] || id);
+          const tab = railTabBtns[id];
+          if (tab) railTabsInner.append(tab);
+        }
+        if (!order.includes(activeRailTab)) activeRailTab = 'local';
+        selectRailTab(activeRailTab);
+        rebuildAddModuleMenu();
+      }
+
+      /**
+       * @param {string} which
+       */
+      function selectRailTab(which) {
+        activeRailTab = which;
+        for (const [id, tab] of Object.entries(railTabBtns)) {
+          const on = id === which;
+          tab.classList.toggle('events-finder__logistics-rail-tab--active', on);
+          tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        }
+        for (const [id, panel] of Object.entries(railPanels)) {
+          panel.hidden = id !== which;
+        }
+      }
+
+      function rebuildAddModuleMenu() {
+        addModuleWrap.replaceChildren();
+        const missing = [];
+        if (!moduleUi.flights.enabled) missing.push({ id: 'flights', label: 'Flights' });
+        if (!moduleUi.transportation.enabled) {
+          missing.push({ id: 'transportation', label: 'Transportation' });
+        }
+        if (!moduleUi.accommodations.enabled) {
+          missing.push({ id: 'accommodations', label: 'Accommodations' });
+        }
+        if (!missing.length) return;
+
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'events-finder__logistics-add-module';
+        addBtn.setAttribute('aria-haspopup', 'menu');
+        addBtn.setAttribute('aria-expanded', 'false');
+        addBtn.textContent = 'Add module';
+        const menu = document.createElement('div');
+        menu.className = 'events-finder__logistics-add-module-menu';
+        menu.setAttribute('role', 'menu');
+        menu.hidden = true;
+        for (const m of missing) {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'events-finder__logistics-add-module-item';
+          item.setAttribute('role', 'menuitem');
+          item.textContent = m.label;
+          item.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            menu.hidden = true;
+            addBtn.setAttribute('aria-expanded', 'false');
+            void enableLogisticsModule(m.id);
+          });
+          menu.append(item);
+        }
+        addBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const open = menu.hidden;
+          menu.hidden = !open;
+          addBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        addModuleWrap.append(addBtn, menu);
+      }
+
+      /**
+       * @param {string} id
+       */
+      async function enableLogisticsModule(id) {
+        if (id === 'flights') {
+          moduleUi.flights.enabled = true;
+          rebuildRailTabs();
+          selectRailTab('flights');
+          scheduleModuleSave?.();
+          if (typeof toggleFlightModule === 'function') {
+            void toggleFlightModule(true);
+          }
+          return;
+        }
+        if (id === 'transportation' || id === 'accommodations') {
+          moduleUi[id].enabled = true;
+          rebuildRailTabs();
+          selectRailTab(id);
+          scheduleModuleSave?.();
+          void upsertResearchModule(id, true);
+        }
+      }
+
+      sideRail.append(railTabs);
+      ensureRailPanel('local', 'Local');
+      body.append(main, sideRail);
+      rebuildRailTabs();
+
+      /** @type {(() => void) | null} */
+      let scheduleModuleSave = null;
+      /** @type {(type: string, enabled: boolean, refresh?: boolean) => Promise<void>} */
+      let upsertResearchModule = async () => {};
+      /** @type {(enabled: boolean, refresh?: boolean) => Promise<void>} */
+      let toggleFlightModule = async () => {};
 
       const head = document.createElement('h3');
       head.className = 'events-finder__conference-detail-title';
       head.textContent = String(ev.title || ev.query || 'Event');
-      body.append(head);
+      main.append(head);
 
       const whenEl = document.createElement('p');
       whenEl.className = 'events-finder__conference-detail-when';
       whenEl.textContent = [
         formatWhen(ev.start) || ev.whenLabel || 'Date TBD',
-        ev.city || ev.placeLabel || '',
+        ev.city || ev.placeLabel || data.city || '',
       ]
         .filter(Boolean)
         .join(' · ');
-      body.append(whenEl);
+      main.append(whenEl);
 
       const dist = document.createElement('p');
       dist.className = 'events-finder__logistics-dist';
       if (data.milesFromBay != null) {
         dist.textContent = data.outsideBay
-          ? `${data.milesFromBay} mi from the Bay Area — travel planning suggested.`
+          ? `${data.milesFromBay} mi from the Bay Area.`
           : `${data.milesFromBay} mi from the Bay Area centroid.`;
       } else {
         dist.textContent = producer
@@ -3975,11 +4241,11 @@ export function mountEventsFinder(root) {
           : 'Location not geocoded yet — add lat/lon in Notable overrides for map + travel.';
         dist.classList.add('muted');
       }
-      body.append(dist);
+      main.append(dist);
 
       const mapEl = document.createElement('div');
       mapEl.className = 'events-finder__logistics-map';
-      body.append(mapEl);
+      main.append(mapEl);
       if (data.map?.lat != null && data.map?.lon != null) {
         try {
           const L = await loadLeaflet();
@@ -4001,12 +4267,321 @@ export function mountEventsFinder(root) {
         mapEl.classList.add('muted');
       }
 
+      /**
+       * Forecast day cards for the Local conditions panel.
+       * @param {object} wx
+       * @returns {HTMLElement}
+       */
+      function buildLogisticsWeatherCard(wx) {
+        const wxWrap = document.createElement('section');
+        wxWrap.className = 'events-finder__logistics-weather';
+        wxWrap.setAttribute('aria-label', 'Event weather forecast');
+
+        const wxHead = document.createElement('h5');
+        wxHead.className = 'events-finder__logistics-weather-title';
+        const until =
+          typeof wx.daysUntil === 'number' && Number.isFinite(wx.daysUntil)
+            ? wx.daysUntil
+            : null;
+        let headText = 'Weather for the event';
+        if (until === 0) headText = 'Weather for today';
+        else if (until === 1) headText = 'Weather — 1 day out';
+        else if (until != null && until > 1) headText = `Weather — ${until} days out`;
+        else if (until != null && until < 0) headText = 'Weather during the event';
+        wxHead.textContent = headText;
+        wxWrap.append(wxHead);
+
+        if (wx.city) {
+          const where = document.createElement('p');
+          where.className = 'events-finder__logistics-weather-where muted';
+          where.textContent = String(wx.city);
+          wxWrap.append(where);
+        }
+
+        if (wx.ok && Array.isArray(wx.days) && wx.days.length) {
+          const row = document.createElement('div');
+          row.className = 'events-finder__logistics-weather-days';
+          for (const day of wx.days) {
+            const card = document.createElement('div');
+            card.className = 'events-finder__logistics-weather-day';
+            const icon = createPolygonWeatherIcon(day.code, `logistics-${day.date || 'd'}`);
+            icon.classList.add('events-finder__logistics-weather-icon');
+            const wd = document.createElement('span');
+            wd.className = 'events-finder__logistics-weather-weekday';
+            wd.textContent = String(day.weekday || '');
+            const temps = document.createElement('span');
+            temps.className = 'events-finder__logistics-weather-temps';
+            const hi = day.highF != null ? `${day.highF}°` : '—';
+            const lo = day.lowF != null ? `${day.lowF}°` : '—';
+            temps.textContent = `${hi} / ${lo}`;
+            const sum = document.createElement('span');
+            sum.className = 'events-finder__logistics-weather-summary muted';
+            sum.textContent = String(day.summary || '');
+            if (day.precipProb != null && day.precipProb >= 20) {
+              sum.textContent = `${sum.textContent}${sum.textContent ? ' · ' : ''}${day.precipProb}% rain`;
+            }
+            card.append(wd, icon, temps, sum);
+            row.append(card);
+          }
+          wxWrap.append(row);
+        } else {
+          const miss = document.createElement('p');
+          miss.className = 'muted';
+          miss.textContent =
+            wx.reason === 'no_coords'
+              ? 'Add a city or map pin to load a local forecast.'
+              : 'Forecast unavailable right now — use the link below.';
+          wxWrap.append(miss);
+        }
+
+        if (wx.moreUrl) {
+          const more = document.createElement('a');
+          more.className = 'events-finder__logistics-weather-more';
+          more.href = String(wx.moreUrl);
+          more.target = '_blank';
+          more.rel = 'noopener noreferrer';
+          more.textContent = 'Full forecast';
+          wxWrap.append(more);
+        }
+
+        return wxWrap;
+      }
+
+      /**
+       * Local conditions / packing impacts brief (daily researched + LLM summary).
+       * Weather sits first; conditions copy follows.
+       * @param {object | null | undefined} brief
+       * @param {HTMLElement} mount
+       */
+      function renderTravelBrief(brief, mount) {
+        mount.replaceChildren();
+
+        const wrap = document.createElement('section');
+        wrap.className = 'events-finder__logistics-brief';
+        wrap.setAttribute('aria-label', 'Local conditions and packing tips');
+
+        const headRow = document.createElement('div');
+        headRow.className = 'events-finder__logistics-brief-head';
+        const h = document.createElement('h4');
+        h.className = 'events-finder__notable-subtitle';
+        h.textContent = 'Local conditions';
+        headRow.append(h);
+
+        const refreshBtn = document.createElement('button');
+        refreshBtn.type = 'button';
+        refreshBtn.className =
+          'events-finder__big-events-confirm events-finder__logistics-brief-refresh';
+        refreshBtn.textContent = brief?.researching ? 'Researching…' : 'Refresh';
+        refreshBtn.disabled = brief?.researching === true;
+        refreshBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void refreshTravelBrief();
+        });
+        headRow.append(refreshBtn);
+        wrap.append(headRow);
+
+        if (data.weather) {
+          wrap.append(buildLogisticsWeatherCard(data.weather));
+        }
+
+        if (brief == null) {
+          mount.append(wrap);
+          return;
+        }
+
+        if (brief.city) {
+          const where = document.createElement('p');
+          where.className = 'events-finder__logistics-brief-where muted';
+          where.textContent = String(brief.city);
+          wrap.append(where);
+        }
+
+        if (brief.researching && !brief.summary) {
+          const pending = document.createElement('p');
+          pending.className = 'muted';
+          pending.textContent =
+            'Researching local news for travel & packing impacts (power, water, smoke, unrest, weather)…';
+          wrap.append(pending);
+        } else if (brief.summary) {
+          const sum = document.createElement('p');
+          sum.className = 'events-finder__logistics-brief-summary';
+          sum.textContent = String(brief.summary);
+          wrap.append(sum);
+        } else if (brief.error) {
+          const err = document.createElement('p');
+          err.className = 'muted';
+          err.textContent = 'Could not build a local brief yet — try Refresh.';
+          wrap.append(err);
+        } else {
+          const empty = document.createElement('p');
+          empty.className = 'muted';
+          empty.textContent = 'No brief yet — refresh to research local conditions.';
+          wrap.append(empty);
+        }
+
+        if (Array.isArray(brief.nwsAlerts) && brief.nwsAlerts.length) {
+          const alertUl = document.createElement('ul');
+          alertUl.className = 'events-finder__logistics-brief-alerts';
+          for (const a of brief.nwsAlerts) {
+            const li = document.createElement('li');
+            li.textContent = a.headline
+              ? `${a.event}: ${a.headline}`
+              : String(a.event || 'Alert');
+            alertUl.append(li);
+          }
+          wrap.append(alertUl);
+        }
+
+        if (Array.isArray(brief.items) && brief.items.length) {
+          const ul = document.createElement('ul');
+          ul.className = 'events-finder__logistics-brief-items';
+          for (const it of brief.items) {
+            const li = document.createElement('li');
+            const title = document.createElement('strong');
+            title.textContent = String(it.title || '');
+            li.append(title);
+            if (it.category) {
+              const cat = document.createElement('span');
+              cat.className = 'events-finder__logistics-brief-cat muted';
+              cat.textContent = ` · ${String(it.category)}`;
+              li.append(cat);
+            }
+            if (it.detail) {
+              const d = document.createElement('p');
+              d.className = 'muted';
+              d.textContent = String(it.detail);
+              li.append(d);
+            }
+            if (it.packingHint) {
+              const tip = document.createElement('p');
+              tip.className = 'events-finder__logistics-brief-hint';
+              tip.textContent = `Pack: ${String(it.packingHint)}`;
+              li.append(tip);
+            }
+            ul.append(li);
+          }
+          wrap.append(ul);
+        }
+
+        if (Array.isArray(brief.packingTips) && brief.packingTips.length) {
+          const ph = document.createElement('h5');
+          ph.className = 'events-finder__logistics-brief-packing-title';
+          ph.textContent = 'Packing / prep tips';
+          wrap.append(ph);
+          const pul = document.createElement('ul');
+          pul.className = 'events-finder__logistics-brief-packing';
+          for (const tip of brief.packingTips) {
+            const li = document.createElement('li');
+            li.textContent = String(tip);
+            pul.append(li);
+          }
+          wrap.append(pul);
+        }
+
+        if (Array.isArray(brief.sources) && brief.sources.length) {
+          const sh = document.createElement('p');
+          sh.className = 'events-finder__logistics-brief-sources-label muted';
+          sh.textContent = 'Sources';
+          wrap.append(sh);
+          const links = document.createElement('div');
+          links.className = 'events-finder__logistics-brief-sources';
+          for (const src of brief.sources.slice(0, 5)) {
+            const a = document.createElement('a');
+            a.href = String(src.url || '#');
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = String(src.title || src.url || 'Source');
+            links.append(a);
+          }
+          wrap.append(links);
+        }
+
+        if (brief.generatedAt) {
+          const meta = document.createElement('p');
+          meta.className = 'events-finder__logistics-brief-meta muted';
+          const when = Date.parse(brief.generatedAt);
+          meta.textContent = Number.isFinite(when)
+            ? `Updated ${new Date(when).toLocaleString()}${brief.fresh ? '' : ' · stale'}`
+            : 'Updated recently';
+          wrap.append(meta);
+        }
+
+        mount.append(wrap);
+      }
+
+      const briefMount = document.createElement('div');
+      briefMount.className = 'events-finder__logistics-brief-mount';
+      ensureRailPanel('local', 'Local');
+      railPanels.local.append(briefMount);
+      let travelBriefState = data.travelBrief;
+      renderTravelBrief(travelBriefState, briefMount);
+
+      async function refreshTravelBrief() {
+        const path = producer
+          ? `/api/events-finder/big-events/${encodeURIComponent(slug)}/travel-brief`
+          : `/api/events-finder/notable/${encodeURIComponent(eventId)}/travel-brief`;
+        travelBriefState = {
+          ...(travelBriefState || {}),
+          researching: true,
+        };
+        renderTravelBrief(travelBriefState, briefMount);
+        try {
+          const res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh: true }),
+          });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok || j.ok === false) throw new Error(j.error || `HTTP ${res.status}`);
+          travelBriefState = j.travelBrief;
+          renderTravelBrief(travelBriefState, briefMount);
+        } catch {
+          travelBriefState = {
+            ...(travelBriefState || {}),
+            researching: false,
+            error: 'refresh_failed',
+          };
+          renderTravelBrief(travelBriefState, briefMount);
+        }
+      }
+
+      // Background research: poll logistics until brief is ready (or give up).
+      if (
+        travelBriefState
+        && (travelBriefState.researching || (!travelBriefState.summary && !travelBriefState.error))
+      ) {
+        let polls = 0;
+        const poll = async () => {
+          polls += 1;
+          if (polls > 24) return;
+          try {
+            const res = await fetch(
+              producer
+                ? `/api/events-finder/big-events/${encodeURIComponent(slug)}/logistics`
+                : `/api/events-finder/notable/${encodeURIComponent(eventId)}/logistics`,
+              { cache: 'no-store' },
+            );
+            const j = await res.json().catch(() => ({}));
+            if (j.travelBrief?.summary || (j.travelBrief && j.travelBrief.researching === false)) {
+              travelBriefState = j.travelBrief;
+              renderTravelBrief(travelBriefState, briefMount);
+              if (j.travelBrief?.summary || j.travelBrief?.error) return;
+            }
+          } catch {
+            // ignore
+          }
+          setTimeout(() => void poll(), 4000);
+        };
+        setTimeout(() => void poll(), 3500);
+      }
+
       function linkSection(titleText, items) {
         if (!Array.isArray(items) || !items.length) return;
         const h = document.createElement('h4');
         h.className = 'events-finder__notable-subtitle';
         h.textContent = titleText;
-        body.append(h);
+        main.append(h);
         const ul = document.createElement('ul');
         ul.className = 'events-finder__logistics-list';
         for (const it of items) {
@@ -4022,50 +4597,678 @@ export function mountEventsFinder(root) {
           li.append(a, d);
           ul.append(li);
         }
-        body.append(ul);
+        main.append(ul);
       }
 
       if (data.outsideBay && data.nearestAirport) {
         const ap = document.createElement('p');
         ap.className = 'events-finder__logistics-airport';
         ap.textContent = `Nearest international airport: ${data.nearestAirport.name} (${data.nearestAirport.code}) — ${data.nearestAirport.miles} mi from venue.`;
-        body.append(ap);
+        main.append(ap);
         linkSection('From the airport', data.transportFromAirport);
       }
 
-      linkSection('Flight search links', data.flights);
-      linkSection('Stay search links', data.accommodations);
+      // Opt-in Google Flights module — Flights tab in the right rail.
+      ensureRailPanel('flights', 'Flights');
+      const flightWrap = document.createElement('div');
+      flightWrap.className = 'events-finder__flight-module';
+      const flightTitle = document.createElement('h4');
+      flightTitle.className = 'events-finder__notable-subtitle';
+      flightTitle.textContent = 'Flights';
+      flightWrap.append(flightTitle);
+
+      const showFlightAvailable =
+        data.flightModuleAvailable === true
+        || (data.outsideBay && data.nearestAirport && !['SFO', 'OAK', 'SJC'].includes(data.nearestAirport.code));
+
+      /**
+       * @param {object | null | undefined} mod
+       */
+      function renderFlightModule(mod) {
+        flightWrap.replaceChildren(flightTitle);
+        if (!showFlightAvailable && !(mod && mod.enabled)) {
+          const none = document.createElement('p');
+          none.className = 'muted';
+          none.textContent = 'Flight suggestions appear for events outside the Bay Area with a destination airport.';
+          flightWrap.append(none);
+          return;
+        }
+        if (!mod?.enabled) {
+          const hint = document.createElement('p');
+          hint.className = 'muted';
+          hint.textContent =
+            'Optional: watch Google Flights from SFO/OAK (prefer departures after 9:45am), pick cheapest + best, and track buy-by timing.';
+          const addBtn = document.createElement('button');
+          addBtn.type = 'button';
+          addBtn.className = 'events-finder__big-events-confirm';
+          addBtn.textContent = 'Add flight module';
+          addBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void toggleFlightModule(true);
+          });
+          flightWrap.append(hint, addBtn);
+          return;
+        }
+
+        const meta = document.createElement('p');
+        meta.className = 'events-finder__flight-meta muted';
+        const bits = [
+          mod.origins?.length ? `${mod.origins.join('/')} → ${mod.destination || '?'}` : null,
+          mod.departDate ? `depart ${mod.departDate}` : null,
+          mod.priceTier ? `pricing: ${mod.priceTier}` : null,
+        ].filter(Boolean);
+        meta.textContent = bits.join(' · ') || 'Searching Google Flights…';
+        flightWrap.append(meta);
+
+        if (mod.checking) {
+          const wait = document.createElement('p');
+          wait.className = 'muted';
+          wait.textContent = 'Checking Google Flights…';
+          flightWrap.append(wait);
+        }
+
+        /**
+         * @param {string} label
+         * @param {object | null | undefined} offer
+         */
+        function offerCard(label, offer) {
+          if (!offer) return;
+          const card = document.createElement('div');
+          card.className = 'events-finder__flight-offer';
+          const h = document.createElement('strong');
+          h.textContent = `${label} · $${offer.priceUsd}`;
+          const detail = document.createElement('p');
+          detail.className = 'muted';
+          detail.textContent = [
+            offer.airline,
+            offer.departTime && offer.arriveTime
+              ? `${offer.departTime} → ${offer.arriveTime}`
+              : offer.departTime,
+            offer.duration,
+            offer.stops == null ? null : offer.stops === 0 ? 'Nonstop' : `${offer.stops} stop${offer.stops === 1 ? '' : 's'}`,
+            offer.origin && offer.destination ? `${offer.origin}→${offer.destination}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          card.append(h, detail);
+          if (offer.googleFlightsUrl) {
+            const a = document.createElement('a');
+            a.href = offer.googleFlightsUrl;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = 'Open in Google Flights';
+            card.append(a);
+          }
+          flightWrap.append(card);
+        }
+
+        offerCard('Cheapest', mod.cheapest);
+        if (mod.best && (!mod.cheapest || mod.best.priceUsd !== mod.cheapest.priceUsd
+          || mod.best.departTime !== mod.cheapest.departTime)) {
+          offerCard('Best', mod.best);
+        }
+
+        if (mod.buyByDate) {
+          const buy = document.createElement('p');
+          buy.className = 'events-finder__flight-buy';
+          buy.textContent = `Buy by ${mod.buyByDate}${mod.buyByReason ? ` — ${mod.buyByReason}` : ''}`;
+          flightWrap.append(buy);
+        }
+
+        if (mod.error && !mod.cheapest) {
+          const err = document.createElement('p');
+          err.className = 'events-finder__big-events-msg events-finder__big-events-msg--error';
+          err.textContent = `Could not parse live fares (${mod.error}). Open Google Flights directly.`;
+          flightWrap.append(err);
+          if (mod.googleFlightsUrl) {
+            const a = document.createElement('a');
+            a.href = mod.googleFlightsUrl;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = 'Open Google Flights search';
+            flightWrap.append(a);
+          }
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'events-finder__notable-actions';
+        const refreshBtn = document.createElement('button');
+        refreshBtn.type = 'button';
+        refreshBtn.className = 'events-finder__big-events-confirm';
+        refreshBtn.textContent = 'Refresh fares';
+        refreshBtn.disabled = mod.checking === true;
+        refreshBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void toggleFlightModule(true, true);
+        });
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'events-finder__big-events-confirm';
+        removeBtn.textContent = 'Remove flight module';
+        removeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void toggleFlightModule(false);
+        });
+        actions.append(refreshBtn, removeBtn);
+        flightWrap.append(actions);
+
+        if (mod.lastCheckedAt) {
+          const checked = document.createElement('p');
+          checked.className = 'muted';
+          checked.style.fontSize = '0.75rem';
+          checked.textContent = `Last checked ${formatWhen(mod.lastCheckedAt) || mod.lastCheckedAt} · reassesses about every 2 hours`;
+          flightWrap.append(checked);
+        }
+      }
+
+      /**
+       * @param {boolean} enabled
+       * @param {boolean} [refresh]
+       */
+      toggleFlightModule = async function toggleFlightModuleFn(enabled, refresh = false) {
+        const endpoint = producer
+          ? `/api/events-finder/big-events/${encodeURIComponent(slug)}/flight-module`
+          : `/api/events-finder/notable/${encodeURIComponent(eventId)}/flight-module`;
+        // Spread existing state first so enabled/checking are not overwritten by stale false.
+        renderFlightModule({
+          ...(data.flightModule || {}),
+          enabled: enabled !== false,
+          checking: enabled !== false,
+        });
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, refresh }),
+          });
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok || out.ok === false) throw new Error(out.error || `HTTP ${res.status}`);
+          data.flightModule = out.flightModule || { enabled };
+          moduleUi.flights.enabled = data.flightModule?.enabled === true;
+          if (!enabled) moduleUi.flights.enabled = false;
+          rebuildRailTabs();
+          renderFlightModule(data.flightModule);
+          if (data.flightModule?.enabled && data.flightModule?.checking) {
+            void pollFlightModule();
+          }
+        } catch (e) {
+          renderFlightModule(data.flightModule);
+          const err = document.createElement('p');
+          err.className = 'events-finder__big-events-msg events-finder__big-events-msg--error';
+          err.textContent = String(e?.message || e);
+          flightWrap.append(err);
+        }
+      }
+
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let flightPollTimer = null;
+      async function pollFlightModule() {
+        if (flightPollTimer) clearTimeout(flightPollTimer);
+        const statusUrl = producer
+          ? `/api/events-finder/big-events/${encodeURIComponent(slug)}/flight-module`
+          : `/api/events-finder/notable/${encodeURIComponent(eventId)}/flight-module`;
+        try {
+          const res = await fetch(statusUrl, { cache: 'no-store' });
+          const out = await res.json().catch(() => ({}));
+          if (res.ok && out.ok !== false && out.flightModule) {
+            data.flightModule = out.flightModule;
+            renderFlightModule(data.flightModule);
+            if (out.flightModule.checking) {
+              flightPollTimer = setTimeout(() => void pollFlightModule(), 2500);
+            }
+            return;
+          }
+        } catch {
+          // keep trying briefly
+        }
+        if (data.flightModule?.checking) {
+          flightPollTimer = setTimeout(() => void pollFlightModule(), 3500);
+        }
+      }
+
+      renderFlightModule(data.flightModule);
+      if (data.flightModule?.enabled && data.flightModule?.checking) {
+        void pollFlightModule();
+      }
+
+      railPanels.flights.replaceChildren(flightWrap);
+
+      /**
+       * Shared notes textarea for a module panel — always first on the card.
+       * @param {HTMLElement} mount
+       * @param {'local'|'flights'|'transportation'|'accommodations'} key
+       * @param {string} placeholder
+       */
+      function appendModuleNotes(mount, key, placeholder) {
+        const wrap = document.createElement('label');
+        wrap.className = 'events-finder__logistics-module-notes';
+        const span = document.createElement('span');
+        span.className = 'events-finder__notable-label';
+        span.textContent = 'Notes';
+        const ta = document.createElement('textarea');
+        ta.className = 'events-finder__notable-textarea';
+        ta.rows = 4;
+        ta.placeholder = placeholder;
+        ta.value = moduleUi[key].notes || '';
+        ta.addEventListener('input', () => {
+          moduleUi[key].notes = ta.value;
+          if (key === 'accommodations') draft.accommodations = ta.value;
+          if (key === 'flights' || key === 'transportation') {
+            // Keep legacy field loosely in sync with transport-ish notes.
+            if (key === 'transportation') draft.flightsTransport = ta.value;
+          }
+          scheduleModuleSave?.();
+        });
+        ta.addEventListener('blur', () => {
+          if (typeof saveTripPlanning === 'function') void saveTripPlanning();
+        });
+        wrap.append(span, ta);
+        mount.prepend(wrap);
+      }
+
+      /**
+       * @param {HTMLElement} mount
+       * @param {{ id: string, title: string, destination?: string, items: { label: string, detail: string, url: string }[] }[]} groups
+       * @param {'accommodations' | 'event' | null} [destFilter]
+       */
+      function renderLinkGroups(mount, groups, destFilter = null) {
+        for (const g of groups || []) {
+          if (!g?.items?.length) continue;
+          if (
+            destFilter
+            && g.destination
+            && g.destination !== 'either'
+            && g.destination !== destFilter
+          ) {
+            continue;
+          }
+          const h = document.createElement('h4');
+          h.className = 'events-finder__notable-subtitle';
+          h.textContent = String(g.title || '');
+          mount.append(h);
+          const ul = document.createElement('ul');
+          ul.className = 'events-finder__logistics-list';
+          for (const it of g.items) {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = String(it.url || '#');
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = String(it.label || 'Link');
+            const d = document.createElement('p');
+            d.className = 'muted';
+            d.textContent = String(it.detail || '');
+            li.append(a, d);
+            ul.append(li);
+          }
+          mount.append(ul);
+        }
+      }
+
+      /**
+       * @param {HTMLElement} mount
+       * @param {object | null | undefined} mod
+       * @param {'transportation'|'accommodations'} type
+       */
+      function renderResearchModuleBody(mount, mod, type) {
+        const head = document.createElement('div');
+        head.className = 'events-finder__logistics-brief-head';
+        const h = document.createElement('h4');
+        h.className = 'events-finder__notable-subtitle';
+        h.textContent = type === 'accommodations' ? 'Accommodations' : 'Transportation';
+        head.append(h);
+        const refreshBtn = document.createElement('button');
+        refreshBtn.type = 'button';
+        refreshBtn.className = 'events-finder__big-events-confirm events-finder__logistics-brief-refresh';
+        refreshBtn.textContent = mod?.researching ? 'Researching…' : 'Refresh';
+        refreshBtn.disabled = mod?.researching === true;
+        refreshBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          void upsertResearchModule(type, true, true);
+        });
+        head.append(refreshBtn);
+        mount.append(head);
+
+        /** @type {'accommodations' | 'event' | null} */
+        let destFilter = null;
+        if (type === 'transportation') {
+          const airportCode = data.nearestAirport?.code
+            ? String(data.nearestAirport.code)
+            : null;
+          const destWrap = document.createElement('div');
+          destWrap.className = 'events-finder__logistics-dest-picker';
+          const destLabel = document.createElement('p');
+          destLabel.className = 'events-finder__logistics-dest-label';
+          destLabel.textContent = airportCode
+            ? `From ${airportCode} to:`
+            : 'From the airport to:';
+          destWrap.append(destLabel);
+          const seg = document.createElement('div');
+          seg.className = 'events-finder__logistics-dest-seg';
+          seg.setAttribute('role', 'group');
+          seg.setAttribute('aria-label', 'Transport destination');
+          for (const opt of [
+            { id: 'accommodations', label: 'Accommodations' },
+            { id: 'event', label: 'Event' },
+          ]) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'events-finder__logistics-dest-opt';
+            btn.textContent = opt.label;
+            const on = moduleUi.transportation.destination === opt.id;
+            btn.classList.toggle('events-finder__logistics-dest-opt--active', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              if (moduleUi.transportation.destination === opt.id) return;
+              moduleUi.transportation.destination =
+                /** @type {'accommodations' | 'event'} */ (opt.id);
+              scheduleModuleSave?.();
+              remountResearchPanel('transportation');
+            });
+            seg.append(btn);
+          }
+          destWrap.append(seg);
+          mount.append(destWrap);
+          destFilter = moduleUi.transportation.destination;
+        }
+
+        if (type === 'accommodations') {
+          const camping = data.accommodationsModule?.camping;
+          if (camping?.suitable) {
+            const tip = document.createElement('p');
+            tip.className = 'events-finder__logistics-camping-ok';
+            tip.textContent = 'Forecast looks camping-friendly — campground links included below.';
+            mount.append(tip);
+          } else if (camping && camping.suitable === false) {
+            const tip = document.createElement('p');
+            tip.className = 'muted';
+            tip.textContent = 'Camping hidden for now — weather does not look great for overnight camping.';
+            mount.append(tip);
+          }
+        }
+
+        if (mod?.researching && !mod?.summary) {
+          const pending = document.createElement('p');
+          pending.className = 'muted';
+          pending.textContent =
+            type === 'accommodations'
+              ? 'Researching hostels, Airbnb, and stays…'
+              : destFilter === 'accommodations'
+                ? 'Researching airport → accommodations transfers…'
+                : 'Researching airport → event transfers…';
+          mount.append(pending);
+        } else if (mod?.summary) {
+          const sum = document.createElement('p');
+          sum.className = 'events-finder__logistics-brief-summary';
+          sum.textContent = String(mod.summary);
+          mount.append(sum);
+        }
+
+        if (Array.isArray(mod?.items) && mod.items.length) {
+          const ul = document.createElement('ul');
+          ul.className = 'events-finder__logistics-brief-items';
+          for (const it of mod.items) {
+            const itemDest = String(it.destination || 'either');
+            if (
+              destFilter
+              && itemDest !== 'either'
+              && itemDest !== destFilter
+            ) {
+              continue;
+            }
+            const li = document.createElement('li');
+            const title = document.createElement('strong');
+            title.textContent = String(it.title || '');
+            li.append(title);
+            if (it.category) {
+              const cat = document.createElement('span');
+              cat.className = 'events-finder__logistics-brief-cat muted';
+              cat.textContent = ` · ${String(it.category)}`;
+              li.append(cat);
+            }
+            if (it.priceHint) {
+              const price = document.createElement('span');
+              price.className = 'events-finder__logistics-price-hint';
+              price.textContent = ` · ${String(it.priceHint)}`;
+              li.append(price);
+            }
+            if (it.detail) {
+              const d = document.createElement('p');
+              d.className = 'muted';
+              d.textContent = String(it.detail);
+              li.append(d);
+            }
+            ul.append(li);
+          }
+          if (ul.childElementCount) mount.append(ul);
+        }
+
+        const groups =
+          type === 'accommodations'
+            ? data.accommodationsModule?.groups || []
+            : data.transportationModule || [];
+        renderLinkGroups(mount, groups, destFilter);
+
+        if (Array.isArray(mod?.sources) && mod.sources.length) {
+          const sh = document.createElement('p');
+          sh.className = 'events-finder__logistics-brief-sources-label muted';
+          sh.textContent = 'Sources';
+          mount.append(sh);
+          const links = document.createElement('div');
+          links.className = 'events-finder__logistics-brief-sources';
+          for (const src of mod.sources.slice(0, 5)) {
+            const a = document.createElement('a');
+            a.href = String(src.url || '#');
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = String(src.title || src.url || 'Source');
+            links.append(a);
+          }
+          mount.append(links);
+        }
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'events-finder__big-events-confirm';
+        removeBtn.textContent = 'Remove module';
+        removeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          moduleUi[type].enabled = false;
+          rebuildRailTabs();
+          selectRailTab('local');
+          scheduleModuleSave?.();
+          void upsertResearchModule(type, false);
+        });
+        mount.append(removeBtn);
+      }
+
+      /**
+       * @param {'transportation'|'accommodations'} type
+       */
+      function remountResearchPanel(type) {
+        ensureRailPanel(
+          type,
+          type === 'accommodations' ? 'Stays' : 'Transport',
+        );
+        const panel = railPanels[type];
+        panel.replaceChildren();
+        const bodyEl = document.createElement('div');
+        bodyEl.className = 'events-finder__logistics-module-body';
+        const mod =
+          type === 'accommodations'
+            ? data.logisticsModules?.accommodations
+            : data.logisticsModules?.transportation;
+        appendModuleNotes(
+          panel,
+          type,
+          type === 'accommodations'
+            ? 'Confirmation #, check-in, hostel/Airbnb notes…'
+            : 'Taxi numbers, rental confirmation, transfer notes…',
+        );
+        renderResearchModuleBody(bodyEl, mod, type);
+        panel.append(bodyEl);
+      }
+
+      upsertResearchModule = async function upsertResearchModuleFn(type, enabled, refresh = false) {
+        const endpoint = producer
+          ? `/api/events-finder/big-events/${encodeURIComponent(slug)}/logistics-module/${type}`
+          : `/api/events-finder/notable/${encodeURIComponent(eventId)}/logistics-module/${type}`;
+        if (!data.logisticsModules) data.logisticsModules = {};
+        data.logisticsModules[type] = {
+          ...(data.logisticsModules[type] || {}),
+          enabled: enabled !== false,
+          researching: enabled !== false,
+          type,
+        };
+        remountResearchPanel(type);
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, refresh }),
+          });
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok || out.ok === false) throw new Error(out.error || `HTTP ${res.status}`);
+          data.logisticsModules[type] = out.module || { enabled, type };
+          moduleUi[type].enabled = out.module?.enabled !== false && enabled !== false;
+          rebuildRailTabs();
+          remountResearchPanel(type);
+          if (out.module?.researching) void pollResearchModule(type);
+        } catch (e) {
+          remountResearchPanel(type);
+          const err = document.createElement('p');
+          err.className = 'events-finder__big-events-msg events-finder__big-events-msg--error';
+          err.textContent = String(e?.message || e);
+          railPanels[type]?.append(err);
+        }
+      };
+
+      /** @type {Record<string, ReturnType<typeof setTimeout> | null>} */
+      const researchPollTimers = { transportation: null, accommodations: null };
+      async function pollResearchModule(type) {
+        if (researchPollTimers[type]) clearTimeout(researchPollTimers[type]);
+        const statusUrl = producer
+          ? `/api/events-finder/big-events/${encodeURIComponent(slug)}/logistics-module/${type}`
+          : `/api/events-finder/notable/${encodeURIComponent(eventId)}/logistics-module/${type}`;
+        try {
+          const res = await fetch(statusUrl, { cache: 'no-store' });
+          const out = await res.json().catch(() => ({}));
+          if (res.ok && out.ok !== false && out.module) {
+            data.logisticsModules = data.logisticsModules || {};
+            data.logisticsModules[type] = out.module;
+            remountResearchPanel(type);
+            if (out.module.researching) {
+              researchPollTimers[type] = setTimeout(() => void pollResearchModule(type), 2500);
+            }
+            return;
+          }
+        } catch {
+          // retry
+        }
+        if (data.logisticsModules?.[type]?.researching) {
+          researchPollTimers[type] = setTimeout(() => void pollResearchModule(type), 3500);
+        }
+      }
+
+      if (moduleUi.transportation.enabled) {
+        remountResearchPanel('transportation');
+        if (data.logisticsModules?.transportation?.researching) {
+          void pollResearchModule('transportation');
+        }
+      }
+      if (moduleUi.accommodations.enabled) {
+        remountResearchPanel('accommodations');
+        if (data.logisticsModules?.accommodations?.researching) {
+          void pollResearchModule('accommodations');
+        }
+      }
+
+      // Notes first on each module card.
+      appendModuleNotes(railPanels.local, 'local', 'Local conditions notes…');
+      appendModuleNotes(
+        railPanels.flights,
+        'flights',
+        'Flight confirmation, seat notes, buy-by reminders…',
+      );
+
       linkSection('Other considerations', data.otherConsiderations);
 
+
       const tp = data.tripPlanning || ev.tripPlanning || {};
-      /** @type {Record<string, string>} */
+
+      /**
+       * @returns {string}
+       */
+      function newLocalId() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+          return crypto.randomUUID();
+        }
+        return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      }
+
+      /**
+       * @param {unknown} raw
+       * @returns {{ id: string, name: string, items: { id: string, text: string, checked: boolean }[] }[]}
+       */
+      function hydratePackingCategories(raw) {
+        if (raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray(raw.categories)) {
+          return raw.categories
+            .filter((c) => c && typeof c === 'object')
+            .map((c) => ({
+              id: String(c.id || newLocalId()),
+              name: String(c.name || '').trim() || 'General',
+              items: Array.isArray(c.items)
+                ? c.items
+                  .filter((it) => it && typeof it === 'object' && String(it.text || '').trim())
+                  .map((it) => ({
+                    id: String(it.id || newLocalId()),
+                    text: String(it.text || '').trim(),
+                    checked: it.checked === true,
+                  }))
+                : [],
+            }));
+        }
+        if (typeof raw === 'string' && raw.trim()) {
+          const lines = raw
+            .split(/\r?\n/)
+            .map((l) => l.replace(/^\s*[-*•]\s*/, '').trim())
+            .filter(Boolean);
+          if (!lines.length) return [];
+          return [
+            {
+              id: newLocalId(),
+              name: 'General',
+              items: lines.map((line) => {
+                const checked = /^\[[xX✓]\]\s*/.test(line);
+                const text = line.replace(/^\[[xX✓\s]?\]\s*/, '').trim() || line;
+                return { id: newLocalId(), text, checked };
+              }),
+            },
+          ];
+        }
+        return [];
+      }
+
+      /** @type {{
+       *   packingCategories: { id: string, name: string, items: { id: string, text: string, checked: boolean }[] }[],
+       *   accommodations: string,
+       *   flightsTransport: string,
+       *   beforeTrip: string,
+       *   notes: string,
+       * }} */
       const draft = {
-        packingList: String(tp.packingList || ''),
+        packingCategories: hydratePackingCategories(tp.packingList),
         accommodations: String(tp.accommodations || ''),
         flightsTransport: String(tp.flightsTransport || ''),
         beforeTrip: String(tp.beforeTrip || ''),
         notes: String(tp.notes || data.planningNotes || ev.planningNotes || ''),
       };
 
-      const fields = [
-        {
-          key: 'packingList',
-          label: 'Packing list',
-          placeholder: 'One item per line…\nPassport / ID\nTickets\nChargers\nLayers for weather',
-          rows: 5,
-        },
-        {
-          key: 'accommodations',
-          label: 'Accommodations',
-          placeholder: 'Hotel / Airbnb name, address, confirmation #, check-in…',
-          rows: 4,
-        },
-        {
-          key: 'flightsTransport',
-          label: 'Flights / transport',
-          placeholder: 'Outbound / return flights, ground transport, rental car…',
-          rows: 4,
-        },
+      const textFields = [
         {
           key: 'beforeTrip',
           label: 'Things to do before the trip',
@@ -4074,7 +5277,7 @@ export function mountEventsFinder(root) {
         },
         {
           key: 'notes',
-          label: 'Notes',
+          label: 'General notes',
           placeholder: 'Anything else for this trip…',
           rows: 3,
         },
@@ -4088,16 +5291,63 @@ export function mountEventsFinder(root) {
       let tripTimer = null;
       let tripInFlight = false;
       let tripAgain = false;
-      let tripAck = JSON.stringify(draft);
 
-      async function saveTripPlanning() {
-        const payload = {
-          packingList: draft.packingList.trim() || null,
-          accommodations: draft.accommodations.trim() || null,
-          flightsTransport: draft.flightsTransport.trim() || null,
+      function packingPayload() {
+        if (!draft.packingCategories.length) return null;
+        return {
+          categories: draft.packingCategories.map((c) => ({
+            id: c.id,
+            name: String(c.name || '').trim() || 'General',
+            items: c.items
+              .filter((it) => String(it.text || '').trim())
+              .map((it) => ({
+                id: it.id,
+                text: String(it.text || '').trim(),
+                checked: it.checked === true,
+              })),
+          })),
+        };
+      }
+
+      function tripPayload() {
+        draft.accommodations = moduleUi.accommodations.notes;
+        draft.flightsTransport =
+          moduleUi.transportation.notes || moduleUi.flights.notes || draft.flightsTransport;
+        return {
+          packingList: packingPayload(),
+          accommodations: moduleUi.accommodations.notes.trim() || null,
+          flightsTransport:
+            (moduleUi.transportation.notes || moduleUi.flights.notes).trim() || null,
           beforeTrip: draft.beforeTrip.trim() || null,
           notes: draft.notes.trim() || null,
+          modules: {
+            local: { notes: moduleUi.local.notes.trim() || null },
+            flights: {
+              enabled: moduleUi.flights.enabled,
+              notes: moduleUi.flights.notes.trim() || null,
+            },
+            transportation: {
+              enabled: moduleUi.transportation.enabled,
+              notes: moduleUi.transportation.notes.trim() || null,
+              destination: moduleUi.transportation.destination,
+            },
+            accommodations: {
+              enabled: moduleUi.accommodations.enabled,
+              notes: moduleUi.accommodations.notes.trim() || null,
+            },
+          },
         };
+      }
+
+      let tripAck = JSON.stringify(tripPayload());
+
+      scheduleModuleSave = function scheduleModuleSaveFn() {
+        if (tripTimer) clearTimeout(tripTimer);
+        tripTimer = setTimeout(() => void saveTripPlanning(), LOGISTICS_AUTOSAVE_MS);
+      };
+
+      async function saveTripPlanning() {
+        const payload = tripPayload();
         const serialized = JSON.stringify(payload);
         if (serialized === tripAck) return;
         if (tripInFlight) {
@@ -4147,7 +5397,9 @@ export function mountEventsFinder(root) {
         tripTimer = setTimeout(() => void saveTripPlanning(), LOGISTICS_AUTOSAVE_MS);
       }
 
-      for (const field of fields) {
+      // —— Before the trip first ——
+      {
+        const field = textFields[0];
         const lab = document.createElement('label');
         lab.className = 'events-finder__notable-field events-finder__notable-field--wide';
         const span = document.createElement('span');
@@ -4164,9 +5416,421 @@ export function mountEventsFinder(root) {
         });
         ta.addEventListener('blur', () => void saveTripPlanning());
         lab.append(span, ta);
-        body.append(lab);
+        main.append(lab);
       }
-      body.append(tripStatus);
+
+      // —— Packing list (categorized checkboxes) ——
+      const packingSection = document.createElement('section');
+      packingSection.className = 'events-finder__packing';
+      packingSection.setAttribute('aria-label', 'Packing list');
+
+      const packingHead = document.createElement('div');
+      packingHead.className = 'events-finder__packing-head';
+      const packingTitle = document.createElement('h4');
+      packingTitle.className = 'events-finder__notable-subtitle';
+      packingTitle.textContent = 'Packing list';
+      packingHead.append(packingTitle);
+      packingSection.append(packingHead);
+
+      const packingCatsEl = document.createElement('div');
+      packingCatsEl.className = 'events-finder__packing-categories';
+      packingSection.append(packingCatsEl);
+
+      const packingFooter = document.createElement('div');
+      packingFooter.className = 'events-finder__packing-footer';
+      const addCatBtn = document.createElement('button');
+      addCatBtn.type = 'button';
+      addCatBtn.className = 'events-finder__btn events-finder__btn--ghost events-finder__packing-add-cat';
+      addCatBtn.textContent = '+ Add category';
+      packingFooter.append(addCatBtn);
+      packingSection.append(packingFooter);
+
+      /** @type {{ kind: 'item' | 'category', categoryId: string, itemId?: string } | null} */
+      let packingDrag = null;
+
+      /**
+       * @param {HTMLElement} list
+       * @param {HTMLElement} dragged
+       * @param {number} clientY
+       */
+      function reorderDomByY(list, dragged, clientY) {
+        const siblings = [...list.children].filter(
+          (el) => el !== dragged && el instanceof HTMLElement && el.draggable,
+        );
+        let insertBefore = null;
+        for (const sib of siblings) {
+          const rect = sib.getBoundingClientRect();
+          if (clientY < rect.top + rect.height / 2) {
+            insertBefore = sib;
+            break;
+          }
+        }
+        if (insertBefore) list.insertBefore(dragged, insertBefore);
+        else list.appendChild(dragged);
+      }
+
+      function syncPackingFromDom() {
+        /** @type {typeof draft.packingCategories} */
+        const next = [];
+        for (const catEl of packingCatsEl.querySelectorAll(':scope > .events-finder__packing-cat')) {
+          const catId = String(catEl.dataset.categoryId || '');
+          const nameInput = catEl.querySelector('.events-finder__packing-cat-name');
+          const name =
+            nameInput instanceof HTMLInputElement
+              ? nameInput.value.trim() || 'General'
+              : 'General';
+          /** @type {{ id: string, text: string, checked: boolean }[]} */
+          const items = [];
+          const list = catEl.querySelector('.events-finder__packing-items');
+          if (list) {
+            for (const row of list.querySelectorAll(':scope > .events-finder__packing-item')) {
+              const itemId = String(row.dataset.itemId || newLocalId());
+              const cb = row.querySelector('input[type="checkbox"]');
+              const textInput = row.querySelector('.events-finder__packing-item-text');
+              const text =
+                textInput instanceof HTMLInputElement ? textInput.value : '';
+              items.push({
+                id: itemId,
+                text,
+                checked: cb instanceof HTMLInputElement ? cb.checked : false,
+              });
+            }
+          }
+          next.push({
+            id: catId || newLocalId(),
+            name,
+            items,
+          });
+        }
+        draft.packingCategories = next;
+        scheduleTripSave();
+      }
+
+      /**
+       * @param {{ id: string, text: string, checked: boolean }} item
+       * @param {string} categoryId
+       */
+      function buildPackingItemRow(item, categoryId) {
+        const row = document.createElement('div');
+        row.className = 'events-finder__packing-item';
+        row.draggable = true;
+        row.dataset.itemId = item.id;
+        row.dataset.categoryId = categoryId;
+        if (item.checked) row.classList.add('is-checked');
+
+        const grip = document.createElement('span');
+        grip.className = 'events-finder__packing-grip';
+        grip.title = 'Drag to reorder';
+        grip.setAttribute('aria-hidden', 'true');
+        grip.textContent = '⋮⋮';
+
+        const label = document.createElement('label');
+        label.className = 'events-finder__packing-check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = item.checked === true;
+        cb.setAttribute('aria-label', 'Packed');
+        const textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.className = 'events-finder__packing-item-text';
+        textInput.value = item.text;
+        textInput.placeholder = 'Item…';
+        textInput.maxLength = 200;
+        label.append(cb, textInput);
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'events-finder__packing-item-del';
+        del.title = 'Remove item';
+        del.setAttribute('aria-label', 'Remove item');
+        del.textContent = '×';
+
+        cb.addEventListener('change', () => {
+          row.classList.toggle('is-checked', cb.checked);
+          syncPackingFromDom();
+        });
+        textInput.addEventListener('input', () => syncPackingFromDom());
+        textInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const cat = draft.packingCategories.find((c) => c.id === categoryId);
+            if (!cat) return;
+            const idx = cat.items.findIndex((it) => it.id === item.id);
+            const fresh = { id: newLocalId(), text: '', checked: false };
+            if (idx >= 0) cat.items.splice(idx + 1, 0, fresh);
+            else cat.items.push(fresh);
+            renderPacking();
+            scheduleTripSave();
+            const focus = packingCatsEl.querySelector(
+              `[data-item-id="${fresh.id}"] .events-finder__packing-item-text`,
+            );
+            if (focus instanceof HTMLInputElement) focus.focus();
+          }
+        });
+        del.addEventListener('click', () => {
+          const cat = draft.packingCategories.find((c) => c.id === categoryId);
+          if (!cat) return;
+          cat.items = cat.items.filter((it) => it.id !== item.id);
+          renderPacking();
+          scheduleTripSave();
+        });
+
+        row.addEventListener('dragstart', (e) => {
+          packingDrag = { kind: 'item', categoryId, itemId: item.id };
+          row.classList.add('is-dragging');
+          e.dataTransfer?.setData('text/plain', `item:${item.id}`);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        });
+        row.addEventListener('dragend', () => {
+          row.classList.remove('is-dragging');
+          packingDrag = null;
+          packingCatsEl
+            .querySelectorAll('.is-drag-over')
+            .forEach((el) => el.classList.remove('is-drag-over'));
+        });
+
+        row.append(grip, label, del);
+        return row;
+      }
+
+      /**
+       * @param {{ id: string, name: string, items: { id: string, text: string, checked: boolean }[] }} cat
+       */
+      function buildPackingCategory(cat) {
+        const wrap = document.createElement('div');
+        wrap.className = 'events-finder__packing-cat';
+        wrap.draggable = true;
+        wrap.dataset.categoryId = cat.id;
+
+        const head = document.createElement('div');
+        head.className = 'events-finder__packing-cat-head';
+
+        const grip = document.createElement('span');
+        grip.className = 'events-finder__packing-grip events-finder__packing-grip--cat';
+        grip.title = 'Drag category';
+        grip.setAttribute('aria-hidden', 'true');
+        grip.textContent = '⋮⋮';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'events-finder__packing-cat-name';
+        nameInput.value = cat.name;
+        nameInput.placeholder = 'Category (e.g. Clothes)';
+        nameInput.maxLength = 80;
+        nameInput.setAttribute('aria-label', 'Category name');
+        nameInput.addEventListener('input', () => syncPackingFromDom());
+
+        const delCat = document.createElement('button');
+        delCat.type = 'button';
+        delCat.className = 'events-finder__packing-item-del';
+        delCat.title = 'Remove category';
+        delCat.setAttribute('aria-label', 'Remove category');
+        delCat.textContent = '×';
+        delCat.addEventListener('click', () => {
+          if (cat.items.length && !window.confirm(`Remove “${cat.name}” and its items?`)) return;
+          draft.packingCategories = draft.packingCategories.filter((c) => c.id !== cat.id);
+          renderPacking();
+          scheduleTripSave();
+        });
+
+        head.append(grip, nameInput, delCat);
+
+        const list = document.createElement('div');
+        list.className = 'events-finder__packing-items';
+        for (const item of cat.items) {
+          list.append(buildPackingItemRow(item, cat.id));
+        }
+
+        list.addEventListener('dragover', (e) => {
+          if (!packingDrag || packingDrag.kind !== 'item') return;
+          e.preventDefault();
+          list.classList.add('is-drag-over');
+          const dragged = packingCatsEl.querySelector(
+            `.events-finder__packing-item[data-item-id="${packingDrag.itemId}"]`,
+          );
+          if (dragged instanceof HTMLElement) reorderDomByY(list, dragged, e.clientY);
+        });
+        list.addEventListener('dragleave', (e) => {
+          if (!list.contains(/** @type {Node} */ (e.relatedTarget))) {
+            list.classList.remove('is-drag-over');
+          }
+        });
+        list.addEventListener('drop', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          list.classList.remove('is-drag-over');
+          if (!packingDrag || packingDrag.kind !== 'item') return;
+          const fromCat = draft.packingCategories.find((c) => c.id === packingDrag.categoryId);
+          const toCat = draft.packingCategories.find((c) => c.id === cat.id);
+          if (!fromCat || !toCat || !packingDrag.itemId) return;
+          const moving = fromCat.items.find((it) => it.id === packingDrag.itemId);
+          if (!moving) return;
+          fromCat.items = fromCat.items.filter((it) => it.id !== packingDrag.itemId);
+          /** @type {{ id: string, text: string, checked: boolean }[]} */
+          const ordered = [];
+          for (const row of list.querySelectorAll(':scope > .events-finder__packing-item')) {
+            const id = String(row.dataset.itemId || '');
+            if (id === moving.id) {
+              ordered.push(moving);
+              continue;
+            }
+            const existing =
+              toCat.items.find((it) => it.id === id)
+              || fromCat.items.find((it) => it.id === id);
+            if (existing) ordered.push(existing);
+          }
+          if (!ordered.some((it) => it.id === moving.id)) ordered.push(moving);
+          toCat.items = ordered;
+          packingDrag = null;
+          renderPacking();
+          scheduleTripSave();
+        });
+
+        const addItemRow = document.createElement('div');
+        addItemRow.className = 'events-finder__packing-add-item';
+        const addItemInput = document.createElement('input');
+        addItemInput.type = 'text';
+        addItemInput.className = 'events-finder__packing-add-item-input';
+        addItemInput.placeholder = 'Add item…';
+        addItemInput.maxLength = 200;
+        const addItemBtn = document.createElement('button');
+        addItemBtn.type = 'button';
+        addItemBtn.className = 'events-finder__btn events-finder__btn--ghost';
+        addItemBtn.textContent = 'Add';
+
+        function commitNewItem() {
+          const text = addItemInput.value.trim();
+          if (!text) return;
+          const target = draft.packingCategories.find((c) => c.id === cat.id);
+          if (!target) return;
+          target.items.push({ id: newLocalId(), text, checked: false });
+          addItemInput.value = '';
+          renderPacking();
+          scheduleTripSave();
+          const focus = packingSection.querySelector(
+            `[data-category-id="${cat.id}"] .events-finder__packing-add-item-input`,
+          );
+          if (focus instanceof HTMLInputElement) focus.focus();
+        }
+
+        addItemBtn.addEventListener('click', commitNewItem);
+        addItemInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commitNewItem();
+          }
+        });
+        addItemRow.append(addItemInput, addItemBtn);
+
+        wrap.addEventListener('dragstart', (e) => {
+          const t = /** @type {HTMLElement | null} */ (e.target);
+          if (t?.closest?.('.events-finder__packing-item')) return;
+          if (t?.closest?.('input, button, label')) {
+            e.preventDefault();
+            return;
+          }
+          packingDrag = { kind: 'category', categoryId: cat.id };
+          wrap.classList.add('is-dragging');
+          e.dataTransfer?.setData('text/plain', `category:${cat.id}`);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        });
+        wrap.addEventListener('dragend', () => {
+          wrap.classList.remove('is-dragging');
+          packingDrag = null;
+          packingCatsEl
+            .querySelectorAll('.is-drag-over')
+            .forEach((el) => el.classList.remove('is-drag-over'));
+        });
+        wrap.addEventListener('dragover', (e) => {
+          if (!packingDrag || packingDrag.kind !== 'category') return;
+          if (packingDrag.categoryId === cat.id) return;
+          e.preventDefault();
+          wrap.classList.add('is-drag-over');
+          const dragged = packingCatsEl.querySelector(
+            `.events-finder__packing-cat[data-category-id="${packingDrag.categoryId}"]`,
+          );
+          if (dragged instanceof HTMLElement) {
+            reorderDomByY(packingCatsEl, dragged, e.clientY);
+          }
+        });
+        wrap.addEventListener('dragleave', (e) => {
+          if (!wrap.contains(/** @type {Node} */ (e.relatedTarget))) {
+            wrap.classList.remove('is-drag-over');
+          }
+        });
+        wrap.addEventListener('drop', (e) => {
+          if (!packingDrag || packingDrag.kind !== 'category') return;
+          e.preventDefault();
+          wrap.classList.remove('is-drag-over');
+          /** @type {typeof draft.packingCategories} */
+          const ordered = [];
+          for (const el of packingCatsEl.querySelectorAll(':scope > .events-finder__packing-cat')) {
+            const id = String(el.dataset.categoryId || '');
+            const found = draft.packingCategories.find((c) => c.id === id);
+            if (found) ordered.push(found);
+          }
+          draft.packingCategories = ordered;
+          packingDrag = null;
+          renderPacking();
+          scheduleTripSave();
+        });
+
+        wrap.append(head, list, addItemRow);
+        return wrap;
+      }
+
+      function renderPacking() {
+        packingCatsEl.replaceChildren();
+        if (!draft.packingCategories.length) {
+          const empty = document.createElement('p');
+          empty.className = 'events-finder__packing-empty muted';
+          empty.textContent = 'No categories yet — add Clothes, Food, or anything you need.';
+          packingCatsEl.append(empty);
+          return;
+        }
+        for (const cat of draft.packingCategories) {
+          packingCatsEl.append(buildPackingCategory(cat));
+        }
+      }
+
+      addCatBtn.addEventListener('click', () => {
+        const cat = { id: newLocalId(), name: 'New category', items: [] };
+        draft.packingCategories.push(cat);
+        renderPacking();
+        scheduleTripSave();
+        const focus = packingCatsEl.querySelector(
+          `[data-category-id="${cat.id}"] .events-finder__packing-cat-name`,
+        );
+        if (focus instanceof HTMLInputElement) {
+          focus.focus();
+          focus.select();
+        }
+      });
+
+      renderPacking();
+      main.append(packingSection);
+
+      // —— Remaining text fields ——
+      for (const field of textFields.slice(1)) {
+        const lab = document.createElement('label');
+        lab.className = 'events-finder__notable-field events-finder__notable-field--wide';
+        const span = document.createElement('span');
+        span.className = 'events-finder__notable-label';
+        span.textContent = field.label;
+        const ta = document.createElement('textarea');
+        ta.className = 'events-finder__notable-textarea';
+        ta.rows = field.rows;
+        ta.placeholder = field.placeholder;
+        ta.value = draft[field.key];
+        ta.addEventListener('input', () => {
+          draft[field.key] = ta.value;
+          scheduleTripSave();
+        });
+        ta.addEventListener('blur', () => void saveTripPlanning());
+        lab.append(span, ta);
+        main.append(lab);
+      }
+      main.append(tripStatus);
 
       const nearbyActions = document.createElement('div');
       nearbyActions.className = 'events-finder__notable-actions';
@@ -4188,7 +5852,7 @@ export function mountEventsFinder(root) {
         });
       });
       nearbyActions.append(findNearbyBtn);
-      body.append(nearbyActions);
+      main.append(nearbyActions);
 
       const nearbyHint = document.createElement('p');
       nearbyHint.className = 'muted events-finder__notable-hint';
@@ -4196,7 +5860,7 @@ export function mountEventsFinder(root) {
       nearbyHint.textContent = nearbyCount
         ? `${nearbyCount} catalog event${nearbyCount === 1 ? '' : 's'} already match your taste in this city/window.`
         : 'Searches your catalog by city + taste for one week before, during, and one week after.';
-      body.append(nearbyHint);
+      main.append(nearbyHint);
     } catch (e) {
       body.replaceChildren();
       const err = document.createElement('p');

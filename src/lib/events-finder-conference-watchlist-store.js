@@ -152,6 +152,8 @@ function normalizeRecord(raw) {
     earlyBirdEnd: normalizeDate(r.earlyBirdEnd),
     // Date general (non-early-bird) ticket sales open, when announced.
     ticketSalesStart: normalizeDate(r.ticketSalesStart),
+    // When attendees may first enter (gates / doors / check-in / camping arrival).
+    gatesOpen: String(r.gatesOpen || '').trim().slice(0, 200) || null,
     screenshotPath: String(r.screenshotPath || '').trim().slice(0, 200) || null,
     // Downloaded flier / promo graphic for the upcoming edition (sidebar image).
     flierPath: String(r.flierPath || '').trim().slice(0, 200) || null,
