@@ -1,0 +1,19 @@
+{
+  "sections": [
+    {
+      "title": "Utilities",
+      "items": [
+        { "word": "Drive", "href": "https://drive.google.com/" },
+        { "word": "Maps", "href": "https://maps.google.com/" },
+        { "word": "GitHub", "href": "https://github.com/" }
+      ]
+    },
+    {
+      "title": "Work",
+      "items": [
+        { "word": "Calendar", "href": "https://calendar.google.com/" },
+        { "word": "Mail", "href": "https://mail.google.com/" }
+      ]
+    }
+  ]
+}

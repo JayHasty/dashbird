@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import bundledTargets from '../data/job-watch-targets.json' with { type: 'json' };
 
 const PKG_ROOT = path.join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
-const TARGETS_PATH = path.join(PKG_ROOT, 'src/data/job-watch-targets.json');
+const LIVE_TARGETS_PATH = path.join(PKG_ROOT, 'data/job-watch-targets.json');
+const BUNDLED_TARGETS_PATH = path.join(PKG_ROOT, 'src/data/job-watch-targets.json');
 
 /** @typedef {{
  *   id: string,
@@ -60,15 +61,18 @@ export function jobWatchStatePath(env = process.env) {
  */
 export async function loadJobWatchTargets() {
   if (targetsCache) return targetsCache;
-  try {
-    const raw = await fs.readFile(TARGETS_PATH, 'utf8');
-    targetsCache = JSON.parse(raw);
-  } catch (e) {
-    const code = /** @type {NodeJS.ErrnoException} */ (e)?.code;
-    if (code !== 'ENOENT') throw e;
-    console.warn('[job-watch] targets file missing; using bundled job-watch-targets.json');
-    targetsCache = structuredClone(bundledTargets);
+  for (const filePath of [LIVE_TARGETS_PATH, BUNDLED_TARGETS_PATH]) {
+    try {
+      const raw = await fs.readFile(filePath, 'utf8');
+      targetsCache = JSON.parse(raw);
+      return targetsCache;
+    } catch (e) {
+      const code = /** @type {NodeJS.ErrnoException} */ (e)?.code;
+      if (code !== 'ENOENT') throw e;
+    }
   }
+  console.warn('[job-watch] targets file missing; using bundled job-watch-targets.json');
+  targetsCache = structuredClone(bundledTargets);
   return targetsCache;
 }
 

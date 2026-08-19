@@ -80,7 +80,7 @@ House Hunter is a separate topbar page — also a **placeholder** until v2.
 | `DASHBOARD_LAN_ORIGIN` | Optional full origin for phone/LAN bookmark link |
 | `GOOGLE_CALENDAR_ICAL_URL` | Public iCal URL (Settings / calendar panel) |
 | `GOOGLE_OAUTH_CLIENT_ID` / `SECRET` | Gmail Events intake OAuth (Settings → Connect Gmail) |
-| `GMAIL_INTAKE_ADDRESS` | Default `jay.intake.box@gmail.com` |
+| `GMAIL_INTAKE_ADDRESS` | Default `intake@example.com` |
 | `WEATHER_LAT` / `WEATHER_LON` | Fallback coordinates when GPS is denied |
 | `SF_WEATHER_LAT` / `SF_WEATHER_LON` | Fallback second hero city when Secondary ZIP is unset/disabled (default San Francisco) |
 | `OPENROUTER_API_KEY` | Optional; tool library AI rating fallback |

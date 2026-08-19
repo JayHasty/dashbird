@@ -396,7 +396,7 @@ function applyTasteToEventsPayload(data, criteria) {
 
 const DEFAULT_GOOGLE_CALENDAR = {
   name: 'Random Events',
-  authuser: 'julia.hasty@gmail.com',
+  authuser: '',
   src: '',
 };
 
@@ -467,7 +467,7 @@ function eventSourceLabel(ev) {
 }
 
 /**
- * Google Calendar “create event” URL — defaults to Random Events for julia.hasty.
+ * Google Calendar “create event” URL — authuser/src from /api/config.
  * @param {object} ev
  * @returns {string}
  */

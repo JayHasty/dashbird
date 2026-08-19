@@ -1,6 +1,6 @@
 /**
  * Events finder — Gmail intake (multi-account).
- * Default inboxes: jay.intake.box@gmail.com + julia.hasty@gmail.com.
+ * Inbox list from GMAIL_INTAKE_ADDRESSES (comma-separated). No personal defaults in-repo.
  * OAuth2 refresh tokens on disk; Gmail API list + parse (.ics / RSVP links / heuristics).
  */
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
@@ -32,12 +32,9 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..', '..');
 
-export const GMAIL_INTAKE_DEFAULT_ADDRESSES = [
-  'jay.intake.box@gmail.com',
-  'julia.hasty@gmail.com',
-];
+export const GMAIL_INTAKE_DEFAULT_ADDRESSES = [];
 /** @deprecated use GMAIL_INTAKE_DEFAULT_ADDRESSES[0] */
-export const GMAIL_INTAKE_DEFAULT_ADDRESS = GMAIL_INTAKE_DEFAULT_ADDRESSES[0];
+export const GMAIL_INTAKE_DEFAULT_ADDRESS = '';
 export const GMAIL_EVENTS_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 
 const TOKEN_URI = 'https://oauth2.googleapis.com/token';

@@ -36,7 +36,7 @@ Cross-reference: v1 ships the dashboard shell and core panels; v2 items mount in
 ### 4. Events
 
 - **UI slot today:** left sidebar card `Events` — filters + feed from ingest (Gmail intake first); Settings has sources table, filter criteria, and ingestion smoke tests.
-- **Live ingest:** Intake Gmail (`jay.intake.box@gmail.com`) via Gmail API OAuth — see Events sources roadmap §7. Facebook via Apify when configured. **Telegram** bot poller when `TELEGRAM_BOT_TOKEN` is set (`src/lib/events-finder-telegram.js`).
+- **Live ingest:** Intake Gmail (`intake@example.com`) via Gmail API OAuth — see Events sources roadmap §7. Facebook via Apify when configured. **Telegram** bot poller when `TELEGRAM_BOT_TOKEN` is set (`src/lib/events-finder-telegram.js`).
 - **Map view — live:** Leaflet map alongside the list feed (`public/js/panels/events-finder.js`, geo from venue / criteria).
 - **Event catalog:** local SQLite at `data/events-finder.db` (`src/lib/events-finder-store.js`) — sources upsert; feed reads the catalog. Criteria remain in `data/events-finder-criteria.json`.
 - **V2 build:** more curated sources (Meetup, Eventbrite, Luma/Partiful), thumbs up/down + optional feedback window, preference store and ranking.

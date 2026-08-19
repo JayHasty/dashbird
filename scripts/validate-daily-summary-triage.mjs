@@ -20,7 +20,7 @@ import { shouldExcludeDailySummaryItem } from '../src/lib/gmail-weekly-summary-s
 const fixtures = [
   {
     id: '1',
-    mailbox: 'jay.intake.box@gmail.com',
+    mailbox: 'intake@example.com',
     subject: 'Action required: sign the NDA',
     from: 'Legal <legal@acme.com>',
     text: 'Please review and sign the NDA by Friday. Action required.',
@@ -29,7 +29,7 @@ const fixtures = [
   },
   {
     id: '2',
-    mailbox: 'jay.intake.box@gmail.com',
+    mailbox: 'intake@example.com',
     subject: 'Your package has shipped',
     from: 'Amazon <ship@amazon.com>',
     text: 'Tracking number 1Z999. Out for delivery tomorrow.',
@@ -38,7 +38,7 @@ const fixtures = [
   },
   {
     id: '3',
-    mailbox: 'jay.intake.box@gmail.com',
+    mailbox: 'intake@example.com',
     subject: "You're invited: Saturday pool party",
     from: 'Bonobo <info@bonobonetwork.com>',
     text: "You're invited! RSVP for the party Saturday. Add to calendar.",
@@ -47,7 +47,7 @@ const fixtures = [
   },
   {
     id: '4',
-    mailbox: 'jay.intake.box@gmail.com',
+    mailbox: 'intake@example.com',
     subject: 'Your verification code is 482913',
     from: 'Security <noreply@example.com>',
     text: 'Use this one-time passcode to sign in. Do not share your OTP.',
@@ -56,7 +56,7 @@ const fixtures = [
   },
   {
     id: '5',
-    mailbox: 'jay.intake.box@gmail.com',
+    mailbox: 'intake@example.com',
     subject: 'Can we meet Thursday?',
     from: 'Sam <sam@partner.org>',
     text: 'When works for a 30 min Zoom? Calendly link inside — propose a time.',
@@ -65,7 +65,7 @@ const fixtures = [
   },
   {
     id: '6',
-    mailbox: 'jay.intake.box@gmail.com',
+    mailbox: 'intake@example.com',
     subject: 'Invoice #441 due',
     from: 'Billing <billing@vendor.com>',
     text: 'Payment due May 1. Invoice attached. ACH details below.',
@@ -74,7 +74,7 @@ const fixtures = [
   },
   {
     id: '7',
-    mailbox: 'jay.intake.box@gmail.com',
+    mailbox: 'intake@example.com',
     subject: 'Please reply about the lease',
     from: 'Office <manager@westernp.com>',
     text: 'Action required: confirm the unit by Friday.',
@@ -122,16 +122,16 @@ assert.match(userPrompt, /Action required: sign the NDA/);
 const mapped = mapTriageParsedToById(
   {
     messages: [
-      { id: 'jay.intake.box@gmail.com:1', category: 'action', importance: 0.9, why: 'nda' },
-      { id: 'jay.intake.box@gmail.com:3', category: 'event', importance: 0.2, why: 'party' },
+      { id: 'intake@example.com:1', category: 'action', importance: 0.9, why: 'nda' },
+      { id: 'intake@example.com:3', category: 'event', importance: 0.2, why: 'party' },
     ],
   },
   fixtures,
 );
-assert.equal(mapped.get('jay.intake.box@gmail.com:1')?.category, 'action');
-assert.equal(mapped.get('jay.intake.box@gmail.com:3')?.category, 'event');
+assert.equal(mapped.get('intake@example.com:1')?.category, 'action');
+assert.equal(mapped.get('intake@example.com:3')?.category, 'event');
 // Heuristic fill for unclassified rows
-assert.ok(mapped.get('jay.intake.box@gmail.com:2'));
+assert.ok(mapped.get('intake@example.com:2'));
 
 const byId = new Map(
   fixtures.map((fx) => [triageMessageKey(fx), heuristicTriageMessage(fx)]),

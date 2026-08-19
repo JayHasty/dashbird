@@ -1,22 +1,27 @@
 ---
-description: Jay's two trusted Dashbird cloud devices — passwordless access only for these
+description: Trusted Dashbird cloud devices — passwordless access only for allowlisted IDs
 alwaysApply: true
 ---
 
-# Trusted cloud devices (Jay only)
+# Trusted cloud devices
 
-Dashbird cloud (`dashbird.jayhasty.com`) uses HTTP basic auth. **Only two devices skip the password** — never weaken this to “any device after login.”
+Dashbird cloud (`dashbird.jayhasty.com`) uses HTTP basic auth. **Only the device IDs listed in
+`DASHBOARD_TRUSTED_DEVICE_IDS` (cloud `.env`) skip the password** — never weaken this to
+“any device after login.”
 
-| Device | Unique ID |
-|--------|-----------|
-| Home Linux laptop | `edd37155-3ffe-4d18-a775-d6cdcedbf343` |
-| Cell phone | `1c0c1947-ad36-4032-aed5-00eb5b28e166` |
+Real device UUIDs live **only** in:
 
-Configured via `DASHBOARD_TRUSTED_DEVICE_IDS` in cloud `.env` (see `deploy/env.cloud.example`).
+- cloud / local `.env` (`DASHBOARD_TRUSTED_DEVICE_IDS`)
+- optional local-only rule `.cursor/rules/trusted-devices.local.mdc` (gitignored)
+
+**Never commit real device UUIDs** to the public repo, docs, or client JS.
 
 ## Agent behavior
 
-- Do **not** ask Jay for the cloud basic-auth password when working on trusted-device auth for these two IDs.
-- Do **not** broaden passwordless access to other devices, IPs, or “trust on first login” for everyone.
+- Do **not** ask Jay for the cloud basic-auth password when working on trusted-device auth for
+  devices already in `DASHBOARD_TRUSTED_DEVICE_IDS` / the local rule.
+- Do **not** broaden passwordless access to other devices, IPs, or “trust on first login.”
 - LAN `docker-compose.yml` stays **without** auth — this rule is cloud-only.
-- One-time setup per device: bookmark `/auth/device-bind?did=<id>` (documented in `docs/deploy-vultr.md`).
+- One-time setup per device: bookmark `/auth/device-bind?did=<id>` after basic auth
+  (see `docs/deploy-vultr.md`). Treat UUIDs as non-secret identifiers but still keep them
+  out of git; binding requires the basic-auth password once.

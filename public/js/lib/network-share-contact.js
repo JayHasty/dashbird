@@ -4,7 +4,7 @@
 
 const LINKEDIN_CARD_URL = '/assets/share-contact-linkedin.jpeg';
 const FACEBOOK_QR_URL = '/assets/share-contact-facebook-qr.png';
-const FACEBOOK_PROFILE_URL = 'https://www.facebook.com/gaia.revolts';
+const FACEBOOK_PROFILE_URL = ''; // set locally / via future Settings; never commit a personal profile
 
 /**
  * @param {string} href
@@ -211,7 +211,7 @@ export function openShareContactInfoDialog() {
     openShareAssetDialog({
       title: 'Facebook profile QR',
       imageUrl: FACEBOOK_QR_URL,
-      imageAlt: 'QR code linking to Facebook profile gaia.revolts',
+      imageAlt: 'QR code linking to Facebook profile',
       caption: FACEBOOK_PROFILE_URL,
       linkUrl: FACEBOOK_PROFILE_URL,
       downloadName: 'jay-hasty-facebook-qr.png',

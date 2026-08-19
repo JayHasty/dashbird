@@ -45,7 +45,7 @@ export const DASHBOARD_SETTING_VARIABLES = [
     key: 'EVENTS_FINDER_GOOGLE_CALENDAR_AUTHUSER',
     group: 'Calendar',
     label: 'Events finder Google account (authuser)',
-    source: '.env (default julia.hasty@gmail.com)',
+    source: '.env (EVENTS_FINDER_GOOGLE_CALENDAR_AUTHUSER)',
   },
   {
     key: 'EVENTS_FINDER_GOOGLE_CALENDAR_SRC',
@@ -55,7 +55,7 @@ export const DASHBOARD_SETTING_VARIABLES = [
   },
   { key: 'GOOGLE_OAUTH_CLIENT_ID', group: 'Events (Gmail intake)', label: 'Google OAuth client ID', source: '.env → Gmail Events OAuth' },
   { key: 'GOOGLE_OAUTH_CLIENT_SECRET', group: 'Events (Gmail intake)', label: 'Google OAuth client secret', source: '.env → Gmail Events OAuth', secret: true },
-  { key: 'GMAIL_INTAKE_ADDRESSES', group: 'Events (Gmail intake)', label: 'Intake Gmail addresses (comma-separated)', source: '.env (default jay.intake.box@gmail.com,julia.hasty@gmail.com)' },
+  { key: 'GMAIL_INTAKE_ADDRESSES', group: 'Events (Gmail intake)', label: 'Intake Gmail addresses (comma-separated)', source: '.env (GMAIL_INTAKE_ADDRESSES — no in-repo defaults)' },
   { key: 'GMAIL_INTAKE_ADDRESS', group: 'Events (Gmail intake)', label: 'Intake Gmail address (legacy single / alias)', source: '.env → prefer GMAIL_INTAKE_ADDRESSES' },
   { key: 'APIFY_TOKEN', group: 'Events (Facebook / Apify)', label: 'Apify API token', source: '.env → facebook-events-scraper', secret: true },
   { key: 'APIFY_FACEBOOK_ACTOR_ID', group: 'Events (Facebook / Apify)', label: 'Facebook Events Actor ID', source: '.env (default apify/facebook-events-scraper)' },

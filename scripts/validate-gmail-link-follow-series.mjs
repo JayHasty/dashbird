@@ -80,7 +80,7 @@ const rosie = eventsFromGmailMessage(
     text: 'Want to come this Thursday around 7pm? Would love to see you.',
   }),
   'America/Los_Angeles',
-  { mailbox: 'julia.hasty@gmail.com' },
+  { mailbox: 'user@example.com' },
 );
 assert.ok(rosie.length >= 1, 'personal relative invite should parse');
 assert.ok(rosie[0].start, 'relative Thursday should resolve a start');
@@ -94,7 +94,7 @@ const series = eventsFromGmailMessage(
     text: 'We meet every 3rd Thursday. Come hang out.',
   }),
   'America/Los_Angeles',
-  { mailbox: 'jay.intake.box@gmail.com' },
+  { mailbox: 'intake@example.com' },
 );
 assert.ok(series.length >= 2, `expected series cards, got ${series.length}`);
 assert.ok(series.every((ev) => ev.start));
@@ -113,7 +113,7 @@ const wedding = eventsFromGmailMessage(
     `,
   }),
   'America/Los_Angeles',
-  { mailbox: 'julia.hasty@gmail.com' },
+  { mailbox: 'user@example.com' },
 );
 assert.equal(wedding.length, 1);
 assert.equal(wedding[0].source, 'withjoy');

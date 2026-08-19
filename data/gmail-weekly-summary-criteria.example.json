@@ -1,0 +1,5 @@
+{
+  "lookFor": "Deadlines I own or need to meet\nScheduling that needs a yes/no from me\nMoney, contracts, or docs to sign",
+  "skip": "FYI newsletters with weak or no action\nAutomated status updates I only need to skim",
+  "blacklist": "Pure marketing / promo blasts\nPassword resets and security codes with no decision\nShipping/delivery noise with no action needed"
+}

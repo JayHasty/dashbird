@@ -160,7 +160,7 @@ const shaped = shapePlainMessage({
   text: fixture.text,
 });
 const events = eventsFromGmailMessage(shaped, 'America/Los_Angeles', {
-  mailbox: 'jay.intake.box@gmail.com',
+  mailbox: 'intake@example.com',
 });
 assert.equal(events.length, 2, `expected 2 events from Bonobo mail, got ${events.length}`);
 assert.match(events[0].title, /Weird Barbie|Afternoon Delight/i);

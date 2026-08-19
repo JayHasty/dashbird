@@ -24,7 +24,7 @@ Shared pipeline (all sources eventually feed the same shape):
 
 **Constraint:** Public HTML only sees **public** parties. Private / invite-only events are invisible without an account session — do **not** rely on scraping for those.
 
-**Primary path for private:** In the Partiful account, set notification / invite email to **`jay.intake.box@gmail.com`**, then ingest via **Intake Gmail** (already queries `from:partiful.com` + Partiful URLs in body).
+**Primary path for private:** In the Partiful account, set notification / invite email to **`intake@example.com`**, then ingest via **Intake Gmail** (already queries `from:partiful.com` + Partiful URLs in body).
 
 **Public path (wired):** `https://partiful.com/explore/sf` → `__NEXT_DATA__` trending + sections + feed (~50 Bay Area public events). Optional extra URLs in [`docs/events-sample-urls.md`](events-sample-urls.md). Override region with `PARTIFUL_EXPLORE_REGION` (default `sf`).
 
@@ -32,11 +32,11 @@ Shared pipeline (all sources eventually feed the same shape):
 
 | Phase | Work |
 | --- | --- |
-| P0 | Account: route Partiful email notifications → `jay.intake.box@gmail.com`; confirm Gmail intake parses Partiful mailers. |
+| P0 | Account: route Partiful email notifications → `intake@example.com`; confirm Gmail intake parses Partiful mailers. |
 | P1 | ~~Parse sample public party URLs~~ → **Explore SF listing** (done). |
 | P2 | Dedupe Gmail-sourced Partiful vs Explore/watchlist; criteria filter. |
 
-**Needs from you:** In Partiful settings, set invite/notification email to `jay.intake.box@gmail.com` (one-time). Public SF discovery needs no action.
+**Needs from you:** In Partiful settings, set invite/notification email to `intake@example.com` (one-time). Public SF discovery needs no action.
 
 ---
 
@@ -44,7 +44,7 @@ Shared pipeline (all sources eventually feed the same shape):
 
 **Constraint:** Public HTML / unauthenticated API cannot see **private / semi-private** events. Site `robots.txt` Disallows crawling; `api.secretparty.io` returns 401 without auth. Event pages are usually `https://<slug>.secretparty.io/`.
 
-**Primary path for private:** In the Secret Party account, set notification / invite email to **`jay.intake.box@gmail.com`**, then ingest via **Intake Gmail** (`from:secretparty.io` + `*.secretparty.io` URLs).
+**Primary path for private:** In the Secret Party account, set notification / invite email to **`intake@example.com`**, then ingest via **Intake Gmail** (`from:secretparty.io` + `*.secretparty.io` URLs).
 
 **Today (wired):** Gmail tags Secret Party links as `source: secretparty`. Optional public watchlist in [`docs/events-sample-urls.md`](events-sample-urls.md). Gap checklist: [`docs/secretparty-ingest-plan.md`](secretparty-ingest-plan.md).
 
@@ -56,7 +56,7 @@ Shared pipeline (all sources eventually feed the same shape):
 | P1 | Grow public watchlist when share URLs are known. |
 | P2 | Optional API if credentials ever land. |
 
-**Needs from you:** In Secret Party settings, set invite/notification email to `jay.intake.box@gmail.com` (one-time). Paste any public `*.secretparty.io` URLs into the sample doc.
+**Needs from you:** In Secret Party settings, set invite/notification email to `intake@example.com` (one-time). Paste any public `*.secretparty.io` URLs into the sample doc.
 ---
 
 ## 2. Luma (`lu.ma` / `luma.com`) — Public pages + calendar API
@@ -113,7 +113,7 @@ event-page seeds.
 
 **Constraint:** Browsing / public discovery on Meetup is weak for our use — hard to look through well. Don’t block the feed on a full Meetup crawl or API.
 
-**Primary path:** In the Meetup account, set email notifications (group digests, event invites, RSVP mail) to **`jay.intake.box@gmail.com`**, then scrape via **Intake Gmail** (`from:meetup.com` + Meetup URLs already in the query).
+**Primary path:** In the Meetup account, set email notifications (group digests, event invites, RSVP mail) to **`intake@example.com`**, then scrape via **Intake Gmail** (`from:meetup.com` + Meetup URLs already in the query).
 
 **Optional later:** Official API if credentials land and we want location search beyond pinned groups + email. Sample seed still in [`docs/events-sample-urls.md`](events-sample-urls.md).
 
@@ -124,11 +124,11 @@ event-page seeds.
 | Phase | Work |
 | --- | --- |
 | P0 | ✅ Pinned-group `/events/` HTML ingest → normalized events (`events-finder-meetup.js`). |
-| P0b | Account: route Meetup notification email → `jay.intake.box@gmail.com`; confirm Gmail intake parses Meetup mailers / `.ics`. |
+| P0b | Account: route Meetup notification email → `intake@example.com`; confirm Gmail intake parses Meetup mailers / `.ics`. |
 | P1 | ✅ Normalize Meetup events → shared schema; criteria filter. |
 | P2 | Optional: Meetup OAuth / GraphQL API for city-wide location search (only if pins + email stay thin). |
 
-**Needs from you:** add group `meetup.com/<slug>/` URLs to [`docs/meetup-group-pins.md`](meetup-group-pins.md) as you find them, and (one-time) set Meetup notification email to `jay.intake.box@gmail.com`. API credentials only if we reopen P2.
+**Needs from you:** add group `meetup.com/<slug>/` URLs to [`docs/meetup-group-pins.md`](meetup-group-pins.md) as you find them, and (one-time) set Meetup notification email to `intake@example.com`. API credentials only if we reopen P2.
 ---
 
 ## 5. Facebook Events (`facebook.com`) — Apify + Gmail invites + pinned hosts
@@ -215,7 +215,7 @@ event-page seeds.
 
 **Decision:** Official **Gmail API** (OAuth, readonly). Not HTML scraping — `mail.google.com` is login-walled.
 
-**Inboxes (default):** `jay.intake.box@gmail.com` **and** `julia.hasty@gmail.com` (override with `GMAIL_INTAKE_ADDRESSES`).
+**Inboxes (default):** `intake@example.com` **and** `YOUR_GMAIL@example.com` (override with `GMAIL_INTAKE_ADDRESSES`).
 
 **Role:** Primary ingest for **private Partiful**, **private Secret Party**, and **Meetup** (after each account’s notification email is set to an intake inbox). Also catches Facebook / Luma / Eventbrite mailers and `.ics` invites from either mailbox.
 
@@ -235,7 +235,7 @@ event-page seeds.
 | 1 | Google Cloud project: enable **Gmail API**; OAuth client (web or desktop). |
 | 2 | Add redirect: `http://127.0.0.1:8787/api/events-finder-gmail/oauth/callback` (or `DASHBOARD_LAN_ORIGIN` + same path). |
 | 3 | Set `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` in `.env` (aliases: `GMAIL_INTAKE_*`). |
-| 4 | Settings → Events sources → **Connect** each inbox — sign in as **jay.intake.box@gmail.com**, then as **julia.hasty@gmail.com**. |
+| 4 | Settings → Events sources → **Connect** each inbox — sign in as **intake@example.com**, then as **YOUR_GMAIL@example.com**. |
 | 5 | In **Partiful**, **Secret Party**, and **Meetup** account settings: set notification / invite email → one of the intake addresses. |
 
 **Needs from you:** OAuth client credentials + Connect for **both** Gmail accounts + step 5 on each platform.
@@ -254,7 +254,7 @@ event-page seeds.
 
 ## Your short to-do list (open)
 
-1. **Account email routing (in each product UI)** — set notification / invite email to an intake address (`jay.intake.box@gmail.com` or `julia.hasty@gmail.com`) on:
+1. **Account email routing (in each product UI)** — set notification / invite email to an intake address (`intake@example.com` or `YOUR_GMAIL@example.com`) on:
    - **Partiful** (private invites won't show on public pages)
    - **Secret Party** (same)
    - **Meetup** (browsing/API discovery is weak; email is the feed)
@@ -264,4 +264,4 @@ event-page seeds.
 
 **Already wired (no action):** Gmail IMAP app passwords for both inboxes; `APIFY_TOKEN`; SQLite catalog; name+date dedupe; Look for / Skip taste; public Partiful + Luma calendar pins + Eventbrite SF listing + Meetup pins + Multiverse ICS + dorkbotSF homepage.
 
-**Settled:** Fet deferred. Partiful sample event URLs received. Eventbrite = public pages first. Intake Gmail = IMAP app passwords (**jay.intake.box + julia.hasty**). **Partiful / Secret Party private + Meetup → email to intake, not public scrape.** **Bay home cities: SF / Oakland / Emeryville / Berkeley.** Feed filters: city, optional distance, date range, earliest time, online vs in person.
+**Settled:** Fet deferred. Partiful sample event URLs received. Eventbrite = public pages first. Intake Gmail = IMAP app passwords (**intake + your-gmail**). **Partiful / Secret Party private + Meetup → email to intake, not public scrape.** **Bay home cities: SF / Oakland / Emeryville / Berkeley.** Feed filters: city, optional distance, date range, earliest time, online vs in person.

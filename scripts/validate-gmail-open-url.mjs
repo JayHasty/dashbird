@@ -16,7 +16,7 @@ import {
 import { gmailReplyUrl } from '../src/lib/gmail-weekly-summary-store.js';
 
 const src = {
-  email: 'julia.hasty@gmail.com',
+  email: 'user@example.com',
   threadId: '19f96aac68af44e9',
   gmailId: '19f96aac68af44e9', // collapsed IMAP id — must not win over thread
   messageId: '152651',
@@ -39,14 +39,14 @@ assert.match(web, /^https:\/\/accounts\.google\.com\/AccountChooser\?/);
 const continueUrl = decodeURIComponent(new URL(web).searchParams.get('continue') || '');
 assert.equal(
   continueUrl,
-  'https://mail.google.com/mail/u/?authuser=julia.hasty@gmail.com#all/19f96aac68af44e9',
+  'https://mail.google.com/mail/u/?authuser=user@example.com#all/19f96aac68af44e9',
 );
 assert.ok(web.includes('#all%2F19f96aac68af44e9') || continueUrl.endsWith('#all/19f96aac68af44e9'));
 assert.equal(gmailReplyUrl(src), web);
 
 // Direct web URL still built for tests / non-intent use
 const direct = gmailDirectWebMessageUrl(src);
-assert.equal(direct, 'https://mail.google.com/mail/u/julia.hasty@gmail.com/#all/19f96aac68af44e9');
+assert.equal(direct, 'https://mail.google.com/mail/u/user@example.com/#all/19f96aac68af44e9');
 
 // Android: SEARCH intent (not https VIEW — that opens inbox)
 const intent = gmailAndroidAppUrl(src, web);
@@ -72,7 +72,7 @@ assert.equal(
 
 // No threadId → rfc822 search (web + native)
 const noThread = {
-  email: 'jay.intake.box@gmail.com',
+  email: 'intake@example.com',
   threadId: '152651', // decimal — sanitized away
   messageId: '152651',
   rfc822MessageId: '<abc@mail.example>',
@@ -84,7 +84,7 @@ const contRfc = decodeURIComponent(new URL(webRfc).searchParams.get('continue') 
 assert.ok(contRfc.includes('#search/rfc822msgid:abc@mail.example'));
 assert.equal(
   gmailDirectWebMessageUrl(noThread),
-  'https://mail.google.com/mail/u/jay.intake.box@gmail.com/#search/rfc822msgid%3Aabc%40mail.example',
+  'https://mail.google.com/mail/u/intake@example.com/#search/rfc822msgid%3Aabc%40mail.example',
 );
 assert.equal(
   gmailNativeAppUrl(noThread),

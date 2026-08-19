@@ -130,7 +130,7 @@ function normalizeMailbox(email) {
 function shortMailboxLabel(email) {
   const s = normalizeMailbox(email);
   if (!s) return '';
-  if (s.startsWith('jay.intake')) return 'intake';
+  if (s.startsWith('intake')) return 'intake';
   if (s.startsWith('julia')) return 'julia';
   return s.split('@')[0] || s;
 }

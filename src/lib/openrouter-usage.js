@@ -109,7 +109,7 @@ export const OPENROUTER_PROGRAMS = Object.freeze([
     relativeWeight: 28,
     triggers: 'One-time bootstrap + every 30 min scan (or manual Refresh)',
     notes:
-      'Digest + action items from jay.intake.box + julia.hasty after intent triage. Rolling 10-day window (hard-delete older unless pinned; unpin grace 30s). Newest first. Defaults to free gpt-oss / gemma; falls back to gpt-4o-mini when free models 429. Override with GMAIL_DAILY_SUMMARY_MODEL.',
+      'Digest + action items from configured Gmail intake addresses after intent triage. Rolling 10-day window (hard-delete older unless pinned; unpin grace 30s). Newest first. Defaults to free gpt-oss / gemma; falls back to gpt-4o-mini when free models 429. Override with GMAIL_DAILY_SUMMARY_MODEL.',
   },
   {
     id: 'gmail-daily-summary-triage',

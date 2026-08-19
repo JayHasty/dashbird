@@ -3,7 +3,7 @@
  */
 
 const DEFAULT_NAME = 'Random Events';
-const DEFAULT_AUTHUSER = 'julia.hasty@gmail.com';
+const DEFAULT_AUTHUSER = '';
 
 /**
  * @param {NodeJS.ProcessEnv} [env]

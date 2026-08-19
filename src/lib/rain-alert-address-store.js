@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const PKG_ROOT = path.join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const SEED_PATH = path.join(PKG_ROOT, 'src/data/rain-alert-address.default.json');
 
-const DEFAULT_ADDRESS = '1217 32nd st oakland california 94608';
+const DEFAULT_ADDRESS = '';
 
 export function rainAlertAddressPath(env = process.env) {
   const override = String(env.RAIN_ALERT_ADDRESS_PATH || '').trim();

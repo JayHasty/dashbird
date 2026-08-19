@@ -73,7 +73,6 @@ data/network-assets/*
 data/backups/
 data/friendzies-2025-import.json
 !data/network-assets/.gitkeep
-!data/network-assets/julia-hasty.jpg
 data/web-catalog.json
 data/web-catalog.json.tmp
 # Atomic-write leftovers (foo.json.<pid>.<ts>.tmp) — Cursor treats *.json* as JSON and nags
@@ -113,3 +112,25 @@ deploy/jayhasty-site/
 data/away-base.json
 data/daily-scratch.json
 data/vikunja-recent-archive.json
+public/data/bookmarks-work.json
+data/gmail-weekly-summary.json
+data/gmail-weekly-summary-mail-cache.json
+data/gmail-weekly-summary-criteria.json
+data/googlekeeptodolist.txt
+data/task-project-locations.md
+data/task-random-meta.json
+data/tg-sync-payload.json
+data/events-finder-email-platforms.json
+data/events-finder-producer-mail-seen.json
+data/job-watch-targets.json
+data/job-watch-targets.personal.json
+docs/recruiter-job-fit-brief.md
+docs/un-job-fit-shortlist.md
+docs/mission-orgs.md
+docs/amazon-return-tracker-plan.md
+public/assets/share-contact-facebook-qr.png
+public/assets/share-contact-linkedin.jpeg
+.cursor/rules/trusted-devices.local.mdc
+
+# Personal / local-only (never publish)
+data/network-foundation.local.json

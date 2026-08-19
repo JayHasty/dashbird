@@ -1685,7 +1685,7 @@ function isPublicProfileUrl(url) {
 
 /**
  * Reject profile URLs whose slug clearly disagrees with the contact's name
- * (stops "Nik Bertulus" from inheriting linkedin.com/in/dr-jay).
+ * (stops a contact from inheriting another person's LinkedIn URL).
  * @param {string} url
  * @param {string} displayName
  * @param {string[]} [aliases]

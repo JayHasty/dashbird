@@ -9,8 +9,11 @@ import {
 const MOBILE_TAB_KEY = 'dashbirdMobileTab';
 /** Bump when any mobile panel module changes (cache-bust dynamic imports). */
 const MOBILE_PANELS_V = 'mobile-panels-20260810-gmail-open-1';
-const PHONE_TRUSTED_DID = '1c0c1947-ad36-4032-aed5-00eb5b28e166';
-const PHONE_DEVICE_BIND = `/auth/device-bind?did=${PHONE_TRUSTED_DID}`;
+function phoneDeviceBindUrl() {
+  let did = '';
+  try { did = String(localStorage.getItem('dashbird_did') || '').trim(); } catch { /* ignore */ }
+  return did ? `/auth/device-bind?did=${encodeURIComponent(did)}` : '/auth/device-bind';
+}
 
 /**
  * @param {unknown} err
@@ -25,7 +28,7 @@ async function describeModuleImportError(err, moduleUrl) {
     const r = await fetch(moduleUrl, { credentials: 'same-origin', cache: 'no-store' });
     if (!r.ok) {
       if (r.status === 401) {
-        detail += ` — session expired; open ${PHONE_DEVICE_BIND}`;
+        detail += ` — session expired; open ${phoneDeviceBindUrl()}`;
         return detail;
       }
       detail += ` — server returned HTTP ${r.status}`;
@@ -190,7 +193,7 @@ export function mountMobileShell(mounts = {}) {
     if (detail.includes('session expired') || detail.includes('401')) {
       statusEl.append(document.createElement('br'));
       const a = document.createElement('a');
-      a.href = PHONE_DEVICE_BIND;
+      a.href = phoneDeviceBindUrl();
       a.textContent = 'Re-trust this phone';
       a.style.color = 'inherit';
       a.style.textDecoration = 'underline';

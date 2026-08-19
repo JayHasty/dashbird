@@ -20,7 +20,7 @@ Secret Party is **wired** for Dashbird via **Intake Gmail** (primary) plus an op
 
 ### A. Account routing (one-time, then verify quarterly)
 
-- [ ] In the Secret Party account UI, set notification / invite email to `jay.intake.box@gmail.com` (or another address in `GMAIL_INTAKE_ADDRESSES`).
+- [ ] In the Secret Party account UI, set notification / invite email to `intake@example.com` (or another address in `GMAIL_INTAKE_ADDRESSES`).
 - [ ] Trigger a test invite to yourself; confirm a message appears in intake within ~1 day.
 - [ ] Confirm Settings → Events sources → Intake Gmail rows stay **Connected** (IMAP/OAuth).
 

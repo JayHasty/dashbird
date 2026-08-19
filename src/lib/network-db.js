@@ -439,10 +439,26 @@ function migrateFromJsonIfNeeded(db, env = process.env) {
 }
 
 /**
- * Ensure Julia + Sam (and related orgs / Runway House) exist as normal rows.
+ * Ensure optional local foundation rows exist when data/network-foundation.local.json is present.
  * @param {DatabaseSync} db
  * @param {NodeJS.ProcessEnv} [env]
  */
+
+/**
+ * Personal Network foundation seed (owner + close contacts). Gitignored —
+ * copy from backups or keep local. Without this file, Dashbird does not
+ * invent personal contacts/orgs on a fresh DB.
+ * @returns {object | null}
+ */
+function loadNetworkFoundationLocal() {
+  const filePath = path.join(PKG_ROOT, 'data', 'network-foundation.local.json');
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 function ensureFoundationRows(db, env = process.env) {
   const now = new Date().toISOString();
   const juliaCreated = '2020-01-01T00:00:00.000Z';
@@ -482,184 +498,103 @@ function ensureFoundationRows(db, env = process.env) {
     if (!missingJulia && !missingSam && !missingRunway) return;
   }
 
-  const hasOrg = db.prepare('SELECT 1 AS ok FROM organizations WHERE id = ?').get(CORVIDAE_ORG_ID);
-  if (!hasOrg) {
-    upsertOrgRow(db, {
-      id: CORVIDAE_ORG_ID,
-      name: 'Corvidae Labs',
-      aliases: ['Corvidae'],
-      summary: 'clean-tech materials climate hardware co-founder venture',
-      description: 'Clean technology venture associated with Julia / Jay Hasty.',
-      website: null,
-      location: 'California, USA',
-      urls: [],
-      logoUrl: null,
-      enrichment: { sources: [], enrichedAt: null, rawSummary: null },
-      createdAt: juliaCreated,
-      updatedAt: now,
-      source: 'manual',
-    });
+  const foundationLocal = loadNetworkFoundationLocal();
+  if (!foundationLocal) {
+    // Public / fresh clones: never seed personal owner/friend rows from source.
+    if (!alreadyBootstrapped) setMeta(db, 'foundation_v1', '1');
+    return;
   }
 
-  if (!db.prepare('SELECT 1 AS ok FROM organizations WHERE id = ?').get(ALL_POWER_LABS_ORG_ID)) {
+  const orgs = Array.isArray(foundationLocal.organizations) ? foundationLocal.organizations : [];
+  for (const org of orgs) {
+    const id = String(org?.id || '').trim();
+    if (!id || db.prepare('SELECT 1 AS ok FROM organizations WHERE id = ?').get(id)) continue;
+    const createdAt = String(org.createdAt || juliaCreated);
     upsertOrgRow(db, {
-      id: ALL_POWER_LABS_ORG_ID,
-      name: 'All Power Labs',
-      aliases: ['APL', 'ALL Power Labs'],
-      summary: 'biomass gasification CHP Berkeley clean energy hardware',
-      description: 'Berkeley biomass gasifier manufacturer; early clean-tech company.',
-      website: 'https://www.allpowerlabs.com/',
-      location: 'Berkeley, CA',
-      urls: ['https://www.allpowerlabs.com/'],
-      logoUrl: null,
+      id,
+      name: String(org.name || id),
+      aliases: Array.isArray(org.aliases) ? org.aliases : [],
+      summary: String(org.summary || ''),
+      description: String(org.description || ''),
+      website: org.website ?? null,
+      location: String(org.location || ''),
+      urls: Array.isArray(org.urls) ? org.urls : [],
+      logoUrl: org.logoUrl ?? null,
       enrichment: { sources: [], enrichedAt: null, rawSummary: null },
-      createdAt: juliaCreated,
-      updatedAt: now,
-      source: 'manual',
-    });
-  }
-
-  if (!db.prepare('SELECT 1 AS ok FROM organizations WHERE id = ?').get(STARSHOT_ORG_ID)) {
-    upsertOrgRow(db, {
-      id: STARSHOT_ORG_ID,
-      name: 'Starshot Capital',
-      aliases: ['Starshot'],
-      summary: 'climate VC Work on Climate',
-      description: 'Climate venture capital firm.',
-      website: 'https://starshotcapital.com/',
-      location: '',
-      urls: ['https://starshotcapital.com/'],
-      logoUrl: null,
-      enrichment: { sources: [], enrichedAt: null, rawSummary: null },
-      createdAt: samCreated,
+      createdAt,
       updatedAt: now,
       source: 'manual',
     });
   }
 
   const assetsDir = path.join(PKG_ROOT, 'data', 'network-assets');
-  let avatarUrl = null;
-  try {
-    fs.accessSync(path.join(assetsDir, 'julia-hasty.jpg'));
-    avatarUrl = '/api/network/assets/julia-hasty.jpg';
-  } catch {
-    avatarUrl = null;
-  }
-
-  const hasJulia =
-    db.prepare('SELECT 1 AS ok FROM contacts WHERE id = ?').get(JULIA_CONTACT_ID) ||
-    db.prepare(`SELECT 1 AS ok FROM contacts WHERE lower(display_name) = 'julia hasty'`).get();
-  if (!hasJulia && !juliaOptOut) {
-    // #region agent log
-    dbgFoundation({
-      hypothesisId: 'H1',
-      location: 'network-db.js:ensureFoundationRows:insertJulia',
-      message: 're-inserting Julia Hasty foundation contact',
-      data: { juliaId: JULIA_CONTACT_ID, avatarUrl, corvidaeExists: Boolean(hasOrg), juliaOptOut },
-    });
-    // #endregion
+  const contacts = Array.isArray(foundationLocal.contacts) ? foundationLocal.contacts : [];
+  for (const c of contacts) {
+    const id = String(c?.id || '').trim();
+    if (!id) continue;
+    if (isFoundationContactOptedOut(db, id)) continue;
+    if (db.prepare('SELECT 1 AS ok FROM contacts WHERE id = ?').get(id)) continue;
+    let avatarUrl = null;
+    const avatarFile = String(c.avatarFile || '').trim();
+    if (avatarFile) {
+      try {
+        fs.accessSync(path.join(assetsDir, avatarFile));
+        avatarUrl = `/api/network/assets/${avatarFile}`;
+      } catch {
+        avatarUrl = null;
+      }
+    }
+    const channels = c.channels && typeof c.channels === 'object' ? { ...c.channels } : {};
     upsertContactRow(db, {
-      id: JULIA_CONTACT_ID,
-      displayName: 'Julia Hasty',
-      aliases: ['Jay Hasty', 'Jaybird', 'Dr. Jay Hasty', 'Dr. Julia Hasty'],
-      kinds: ['friend'],
-      summary: 'clean-tech materials biomass gasification climate hardware PhD Corvidae All Power Labs',
-      notes: '',
-      bio:
-        'Clean technology and materials scientist. Founding / early roles at All Power Labs (customer & technical support for biomass gasification systems). Co-founder of Corvidae Labs. PhD in Material Science Engineering (Stony Brook); B.S. Chemistry (Radford / Oxford University in Virginia).',
-      howWeMet: '',
-      networkCircles: 'Runway House',
-      alignedActivities: [
-        'Clean tech / climate hardware projects',
-        'Materials and energy systems R&D',
-        'Building personal tools (Dashbird, Corvidae)',
-      ],
-      org: 'Corvidae Labs',
-      orgId: CORVIDAE_ORG_ID,
-      title: 'Co-founder',
-      location: 'California, USA',
-      preferredContactMethods: ['email', 'signal', 'phone'],
+      id,
+      displayName: String(c.displayName || id),
+      aliases: Array.isArray(c.aliases) ? c.aliases : [],
+      kinds: Array.isArray(c.kinds) ? c.kinds : ['friend'],
+      summary: String(c.summary || ''),
+      notes: String(c.notes || ''),
+      bio: String(c.bio || ''),
+      howWeMet: String(c.howWeMet || ''),
+      networkCircles: String(c.networkCircles || ''),
+      alignedActivities: Array.isArray(c.alignedActivities) ? c.alignedActivities : [],
+      org: String(c.org || ''),
+      orgId: c.orgId || null,
+      title: String(c.title || ''),
+      location: String(c.location || ''),
+      preferredContactMethods: Array.isArray(c.preferredContactMethods) ? c.preferredContactMethods : [],
       channels: {
         email: null,
         phone: null,
         sms: null,
         signal: null,
         whatsapp: null,
-        linkedin: 'https://www.linkedin.com/in/dr-jay/',
-        urls: ['https://www.neoh2.com/team/', 'https://www.linkedin.com/in/dr-jay/'],
+        linkedin: channels.linkedin || null,
+        urls: Array.isArray(channels.urls) ? channels.urls : [],
+        ...channels,
       },
       avatarUrl,
       lastContactAt: null,
       lastContactChannel: null,
-      enrichment: {
-        sources: [
-          'https://www.neoh2.com/team/',
-          'https://www.linkedin.com/in/dr-jay/',
-        ],
-        enrichedAt: now,
-        rawSummary: 'Public Neo-H2 team bio and LinkedIn.',
-      },
-      createdAt: juliaCreated,
-      updatedAt: now,
-      source: 'manual',
-    });
-  }
-
-  const hasSam =
-    db.prepare('SELECT 1 AS ok FROM contacts WHERE id = ?').get(SAM_CONTACT_ID) ||
-    db
-      .prepare(`SELECT 1 AS ok FROM contacts WHERE lower(display_name) = 'sam levac-levey'`)
-      .get();
-  if (!hasSam && !samOptOut) {
-    upsertContactRow(db, {
-      id: SAM_CONTACT_ID,
-      displayName: 'Sam Levac-Levey',
-      aliases: ['Samuel Levac-Levey', 'Sam Levac Levey'],
-      kinds: ['friend', 'business'],
-      summary: 'climate VC Starshot Capital Work on Climate SpaceX Tesla Lilium mechanical engineering',
-      notes: '',
-      bio: 'Founding Partner at Starshot Capital. Founding member of Work on Climate. Background in mechanical engineering (SpaceX, Tesla, Lilium).',
-      howWeMet: '',
-      networkCircles: 'Runway House',
-      alignedActivities: [],
-      org: 'Starshot Capital',
-      orgId: STARSHOT_ORG_ID,
-      title: 'Founding Partner',
-      location: '',
-      preferredContactMethods: ['email', 'linkedin'],
-      channels: {
-        email: null,
-        phone: null,
-        sms: null,
-        signal: null,
-        whatsapp: null,
-        linkedin: 'https://www.linkedin.com/in/sam-levac-levey',
-        urls: ['https://starshotcapital.com/'],
-      },
-      avatarUrl: null,
-      lastContactAt: null,
-      lastContactChannel: null,
       enrichment: { sources: [], enrichedAt: null, rawSummary: null },
-      createdAt: samCreated,
+      createdAt: String(c.createdAt || juliaCreated),
       updatedAt: now,
       source: 'manual',
     });
   }
 
-  const hasRunway =
-    db.prepare('SELECT 1 AS ok FROM groups WHERE id = ?').get(RUNWAY_HOUSE_GROUP_ID) ||
-    db.prepare(`SELECT 1 AS ok FROM groups WHERE lower(name) = 'runway house'`).get();
-  if (!hasRunway) {
+  const groups = Array.isArray(foundationLocal.groups) ? foundationLocal.groups : [];
+  for (const g of groups) {
+    const id = String(g?.id || '').trim();
+    if (!id || db.prepare('SELECT 1 AS ok FROM groups WHERE id = ?').get(id)) continue;
     upsertGroupRow(db, {
-      id: RUNWAY_HOUSE_GROUP_ID,
-      name: 'Runway House',
-      kind: 'community',
-      description: 'Runway House network circle.',
-      memberIds: [JULIA_CONTACT_ID, SAM_CONTACT_ID],
+      id,
+      name: String(g.name || id),
+      kind: String(g.kind || 'community'),
+      description: String(g.description || ''),
+      memberIds: Array.isArray(g.memberIds) ? g.memberIds : [],
       commonalities: [],
       suggestions: [],
       commonalitiesUpdatedAt: null,
-      createdAt: juliaCreated,
+      createdAt: String(g.createdAt || juliaCreated),
       updatedAt: now,
       source: 'manual',
     });

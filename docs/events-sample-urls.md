@@ -24,7 +24,7 @@ Checked titles (approx): EBPG July Potluck; Elysian Mothership; Philosophy Slumb
 
 **No public explore / list API** (`robots.txt` Disallow; `api.secretparty.io` needs auth). Events are share links on `https://<slug>.secretparty.io/`.
 
-**Primary path:** route Secret Party notification/invite email → intake Gmail (`jay.intake.box@gmail.com`). Gmail already matches `from:secretparty.io` and `*.secretparty.io` URLs.
+**Primary path:** route Secret Party notification/invite email → intake Gmail (`intake@example.com`). Gmail already matches `from:secretparty.io` and `*.secretparty.io` URLs.
 
 Optional public watchlist (paste known public event URLs; one per line):
 

@@ -14,7 +14,7 @@ One-time cutover from Squarespace to **Cloudflare DNS** + **Google Workspace** +
 | `dashbird.jayhasty.com` | Private Dashbird (auth) |
 | `calclaim.jayhasty.com` | Public CalClaim demo (later — Railway `CNAME` or Vultr proxy) |
 | `otherproject.jayhasty.com` | Add later — same subdomain pattern |
-| `jay@jayhasty.com` | Gmail via Google Workspace |
+| `you@example.com` | Gmail via Google Workspace |
 
 Prefer `calclaim.jayhasty.com` / `dashbird.jayhasty.com` over `jayhasty.com/calclaim` — separate deploys, TLS, and auth stay isolated.
 
@@ -83,7 +83,7 @@ Cheaper renewals (~$10/yr for `.com`):
 
 ---
 
-## Part 2 — Google Workspace (`jay@jayhasty.com`)
+## Part 2 — Google Workspace (`you@example.com`)
 
 Do this **after** Cloudflare DNS is Active (Part 1.2).
 
@@ -93,7 +93,7 @@ Do this **after** Cloudflare DNS is Active (Part 1.2).
 2. Business name: your choice (e.g. "Jay Hasty").
 3. Number of employees: **Just you**.
 4. **Yes** — you have a domain → enter `jayhasty.com`.
-5. Create admin user: **`jay`** → full address **`jay@jayhasty.com`**. Choose a strong password.
+5. Create admin user: **`jay`** → full address **`you@example.com`**. Choose a strong password.
 6. Complete billing (~**$7/mo** Business Starter).
 
 ### 2.2 Verify domain ownership
@@ -154,13 +154,13 @@ Back in Admin → **Start authentication**.
 
 | Type | Name | Content |
 |------|------|---------|
-| `TXT` | `_dmarc` | `v=DMARC1; p=none; rua=mailto:jay@jayhasty.com` |
+| `TXT` | `_dmarc` | `v=DMARC1; p=none; rua=mailto:you@example.com` |
 
 Start with `p=none`; tighten to `quarantine` / `reject` later once mail is stable.
 
 ### 2.7 Test email
 
-1. Open [mail.google.com](https://mail.google.com) → sign in as **`jay@jayhasty.com`**.
+1. Open [mail.google.com](https://mail.google.com) → sign in as **`you@example.com`**.
 2. Send a test to your personal Gmail; reply back.
 3. Check spam folder on first messages.
 
@@ -180,7 +180,7 @@ PORTFOLIO_DOMAIN=portfolio.jayhasty.com
 DASHBOARD_DOMAIN=dashbird.jayhasty.com
 DASHBOARD_LAN_ORIGIN=https://dashbird.jayhasty.com
 VIKUNJA_SERVICE_PUBLICURL=https://dashbird.jayhasty.com/
-CADDY_EMAIL=jay@jayhasty.com
+CADDY_EMAIL=you@example.com
 ```
 
 Keep existing auth hashes, API keys, and secrets unchanged.
@@ -235,8 +235,8 @@ Caddy should obtain Let's Encrypt certs for all four hostnames. First visit may 
 
 Open once on each device (enter basic-auth password if prompted):
 
-- **Home Linux:** `https://dashbird.jayhasty.com/auth/device-bind?did=edd37155-3ffe-4d18-a775-d6cdcedbf343`
-- **Phone:** `https://dashbird.jayhasty.com/auth/device-bind?did=1c0c1947-ad36-4032-aed5-00eb5b28e166`
+- **Home Linux:** `https://dashbird.jayhasty.com/auth/device-bind?did=YOUR_LAPTOP_DEVICE_UUID`
+- **Phone:** `https://dashbird.jayhasty.com/auth/device-bind?did=YOUR_PHONE_DEVICE_UUID`
 
 Update phone/laptop bookmarks to `https://dashbird.jayhasty.com`.
 
@@ -259,8 +259,8 @@ If you use Dashbird Gmail ingest:
 | www redirect | `https://www.jayhasty.com` → apex |
 | Portfolio alias | `https://portfolio.jayhasty.com` |
 | Dashbird loads | `https://dashbird.jayhasty.com` (auth or trusted device) |
-| Receive mail | Send to `jay@jayhasty.com` from outside |
-| Send mail | Send from `jay@jayhasty.com` to yourself |
+| Receive mail | Send to `you@example.com` from outside |
+| Send mail | Send from `you@example.com` to yourself |
 | TLS | Padlock on all HTTPS URLs |
 | DNS not proxied | `dig +short jayhasty.com` returns Vultr IP (not Cloudflare `104.21.*` / `172.67.*`) |
 

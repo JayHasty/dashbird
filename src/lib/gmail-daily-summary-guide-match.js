@@ -142,7 +142,7 @@ export function guideBulletMatchesItem(bullet, itemBlob) {
   const blob = normalizePatternKey(itemBlob);
   if (!pattern || !blob) return false;
 
-  // Short keyword rules (e.g. "Ozempic", "Peptides", "bank statements").
+  // Short keyword rules (e.g. "marketing keywords", "OTP codes").
   const tokens = contentTokens(pattern);
   if (!tokens.length) {
     return blob.includes(pattern);

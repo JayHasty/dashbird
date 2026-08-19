@@ -43,7 +43,7 @@ docker run --rm caddy:2-alpine caddy hash-password --plaintext 'YOUR_PASSWORD'
 #   $2a$14$abc...  →  $$2a$$14$$abc...
 # trusted devices (passwordless for Jay home Linux + phone only):
 #   openssl rand -base64 48  →  DASHBOARD_TRUSTED_DEVICE_SECRET=
-#   DASHBOARD_TRUSTED_DEVICE_IDS=edd37155-3ffe-4d18-a775-d6cdcedbf343,1c0c1947-ad36-4032-aed5-00eb5b28e166
+#   DASHBOARD_TRUSTED_DEVICE_IDS=YOUR_LAPTOP_DEVICE_UUID,YOUR_PHONE_DEVICE_UUID
 ```
 
 6. Bring up the stack:
@@ -56,8 +56,8 @@ docker compose -f docker-compose.cloud.yml ps
 ```
 
 7. **One-time per device** — open these bookmarks (no password after this):
-   - **Home Linux laptop:** `https://dashbird.jayhasty.com/auth/device-bind?did=edd37155-3ffe-4d18-a775-d6cdcedbf343`
-   - **Phone:** `https://dashbird.jayhasty.com/auth/device-bind?did=1c0c1947-ad36-4032-aed5-00eb5b28e166`
+   - **Home Linux laptop:** `https://dashbird.jayhasty.com/auth/device-bind?did=YOUR_LAPTOP_DEVICE_UUID`
+   - **Phone:** `https://dashbird.jayhasty.com/auth/device-bind?did=YOUR_PHONE_DEVICE_UUID`
    Other browsers/devices still require basic auth every visit. Revoke trust by rotating `DASHBOARD_TRUSTED_DEVICE_SECRET` in `.env` and rebuilding.
 
 If basic-auth credentials were generated on the server:

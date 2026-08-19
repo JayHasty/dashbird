@@ -26,7 +26,7 @@ console.log('resolve known:', await resolveEventbriteTrackingUrl(known));
 
 const thin = [
   {
-    id: 'gmail:julia.hasty@gmail.com:152049',
+    id: 'gmail:user@example.com:152049',
     title: 'Just added! HMU Tie Me Down: Hot, Dirty Rope from Hit Me Up 📅',
     start: '2026-07-16T00:00:00.000Z',
     end: null,
@@ -37,7 +37,7 @@ const thin = [
     raw: {
       via: 'platform_link',
       urls: ['https://eventbrite.com/', known],
-      mailbox: 'julia.hasty@gmail.com',
+      mailbox: 'user@example.com',
     },
   },
 ];
