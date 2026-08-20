@@ -146,14 +146,14 @@ app.use(
         res.setHeader('Cache-Control', 'no-cache, must-revalidate');
         return;
       }
-      // Bookmark JSON + other public/data files: short TTL for remote RTT (same UI).
+      // Bookmark JSON is mutated via /api/bookmarks — never cache it in production.
       const isBookmarkJson =
         p.endsWith('/bookmarks-personal.json') ||
         p.endsWith('/bookmarks-work.json') ||
         p.endsWith('bookmarks-personal.json') ||
         p.endsWith('bookmarks-work.json');
       if (isBookmarkJson) {
-        res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
         return;
       }
       res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
@@ -230,6 +230,12 @@ app.use('/api/dev-agent-log', devAgentLogRouter);
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'not_found' });
+    return;
+  }
+  // Never SPA-fallback HTML for data JSON — the bookmarks panel treats HTML as
+  // "Invalid JSON in bookmark file" when a tile file is missing or unreadable.
+  if (req.path.startsWith('/data/') || /\.json$/i.test(req.path)) {
+    res.status(404).type('application/json').json({ error: 'not_found' });
     return;
   }
   res.sendFile(path.join(publicDir, 'index.html'));

@@ -9,6 +9,8 @@ features.txt
 
 # Local-only (never push real copies of these)
 public/data/bookmarks-personal.json
+public/data/bookmarks-work.json
+public/data/bookmarks-*.json.bak
 public/data/notes.md
 public/data/last-backup.txt
 public/data/phone-lan-url.txt
@@ -112,7 +114,6 @@ deploy/jayhasty-site/
 data/away-base.json
 data/daily-scratch.json
 data/vikunja-recent-archive.json
-public/data/bookmarks-work.json
 data/gmail-weekly-summary.json
 data/gmail-weekly-summary-mail-cache.json
 data/gmail-weekly-summary-criteria.json

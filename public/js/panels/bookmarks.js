@@ -457,12 +457,12 @@ function openAddBookmarkDialog(columns) {
       }
       save.disabled = true;
       try {
-        await apiJson('POST', `/api/bookmarks/${encodeURIComponent(scope)}/items`, {
+        const res = await apiJson('POST', `/api/bookmarks/${encodeURIComponent(scope)}/items`, {
           section,
           word,
           href,
         });
-        finish({ scope });
+        finish({ scope, data: res.data });
       } catch (e) {
         error.textContent = String(e?.message || e);
         save.disabled = false;
@@ -534,7 +534,11 @@ export function createBookmarksCoordinator() {
     const saved = await openAddBookmarkDialog(columns);
     if (saved && saved.scope) {
       const g = grids.find((x) => x.scope === saved.scope);
-      if (g) await g.reload(true);
+      if (!g) return;
+      // Prefer API payload so we never re-fetch static JSON after a successful write
+      // (avoids SPA/HTML or stale responses looking like "Invalid JSON").
+      if (saved.data) g.applyData(saved.data);
+      else await g.reload(true);
     }
   }
 
@@ -546,16 +550,18 @@ export function createBookmarksCoordinator() {
       const items = g.collectSelected();
       if (items.length === 0) continue;
       try {
-        await apiJson('POST', `/api/bookmarks/${encodeURIComponent(g.scope)}/bulk-delete`, {
+        const res = await apiJson('POST', `/api/bookmarks/${encodeURIComponent(g.scope)}/bulk-delete`, {
           items,
         });
+        if (res?.data) g.applyData(res.data);
+        else await g.reload(true);
       } catch (e) {
         window.alert(`Could not delete from ${SCOPE_LABEL[g.scope] || g.scope}: ${String(e?.message || e)}`);
+        await g.reload(true);
       }
     }
     mode = 'view';
     grids.forEach((g) => g.clearSelected());
-    for (const g of grids) await g.reload(true);
     renderToolbar();
   }
 
@@ -783,8 +789,16 @@ export async function mountBookmarkGrid(root, dataPath, emptyHint, coordinator =
       const url = force ? `${dataPath}?_=${Date.now()}` : dataPath;
       const r = await fetch(url, { cache: force ? 'no-store' : 'default' });
       if (!r.ok) {
-        if (!root.querySelector('.bookmark-section, .bookmark-section-grid')) {
+        if (!currentData && !root.querySelector('.bookmark-section, .bookmark-section-grid')) {
           root.innerHTML = `<p class="muted">${emptyHint}</p>`;
+        }
+        return;
+      }
+      const ct = String(r.headers.get('content-type') || '').toLowerCase();
+      if (!ct.includes('json')) {
+        // SPA/HTML fallback used to land here as "Invalid JSON" — keep tiles if we have them.
+        if (!currentData) {
+          root.innerHTML = '<p class="muted">Bookmark file unavailable.</p>';
         }
         return;
       }
@@ -792,17 +806,23 @@ export async function mountBookmarkGrid(root, dataPath, emptyHint, coordinator =
       try {
         data = await r.json();
       } catch {
-        root.innerHTML = '<p class="muted">Invalid JSON in bookmark file.</p>';
+        if (!currentData) {
+          root.innerHTML = '<p class="muted">Invalid JSON in bookmark file.</p>';
+        }
         return;
       }
-      currentData = data;
-      writeBookmarkCache(dataPath, data);
-      render();
+      applyData(data);
     } catch {
-      if (!root.querySelector('.bookmark-section, .bookmark-section-grid')) {
+      if (!currentData && !root.querySelector('.bookmark-section, .bookmark-section-grid')) {
         root.innerHTML = `<p class="muted">${emptyHint}</p>`;
       }
     }
+  }
+
+  function applyData(data) {
+    currentData = data;
+    writeBookmarkCache(dataPath, data);
+    render();
   }
 
   if (editable && coordinator) {
@@ -813,6 +833,7 @@ export async function mountBookmarkGrid(root, dataPath, emptyHint, coordinator =
           .map((s) => (typeof s.title === 'string' ? s.title.trim() : ''))
           .filter(Boolean),
       reload: (force) => loadAndMount(force),
+      applyData,
       rerender: () => render(),
       selectedSize: () => selected.size,
       clearSelected: () => selected.clear(),
