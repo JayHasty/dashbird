@@ -13,7 +13,7 @@ are) and [`security-plan.md`](security-plan.md) (§9 incident response).
 
 ## What you need to recover
 
-1. The repo (GitHub `hastyjaybird/dashbird`).
+1. The repo (GitHub `heyhastyjay/dashbird`).
 2. A backup tarball — in priority order:
    - Newest **off-host** copy (encrypted `.age`/`.gpg` on the rclone remote — survives losing the VPS).
    - `data/backups/daily-YYYY-MM-DD.tar.gz` on a surviving host (LAN or cloud).
@@ -82,7 +82,7 @@ Full rebuild on a fresh server. This is why off-host backups exist.
 2. **Point DNS**: update Cloudflare A records for `dashbird.jayhasty.com` (and portfolio hosts) to the new IPv4 (grey cloud).
 3. **Get the code**:
    ```bash
-   git clone https://github.com/hastyjaybird/dashbird /opt/dashbird && cd /opt/dashbird
+   git clone https://github.com/heyhastyjay/dashbird /opt/dashbird && cd /opt/dashbird
    ```
 4. **Restore secrets**: recreate `.env` from your password-manager copy (or
    `cp deploy/env.cloud.example .env` and refill). Ensure `DASHBOARD_DOMAIN`, basic-auth hash,

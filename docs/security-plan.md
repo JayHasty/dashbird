@@ -72,7 +72,7 @@ For each finding: severity, owner, fix or documented accept-with-reason, target 
 
 **Status:** decided 2026-07-09. Candidates were scored side by side against the same criteria; prior IDE experiments and leftover config did **not** weight any vendor.
 
-**Repo facts used:** GitHub remote (`hastyjaybird/dashbird`); no CI workflows yet; Node 20+ Express app with lockfile; Docker image based on `mcr.microsoft.com/playwright` (large OS surface); threat model is LAN-only (§2).
+**Repo facts used:** GitHub remote (`heyhastyjay/dashbird`); no CI workflows yet; Node 20+ Express app with lockfile; Docker image based on `mcr.microsoft.com/playwright` (large OS surface); threat model is LAN-only (§2).
 
 ### Decision criteria (applied to every candidate)
 
