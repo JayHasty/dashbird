@@ -219,7 +219,7 @@ async function mountDeferredPanels(config) {
       }),
     ),
     mountWhenReady('job-watch', () =>
-      import('./panels/job-watch.js?v=filters-no-remote-region').then(({ mountJobWatch }) => {
+      import('./panels/job-watch.js?v=closed-lanes-no-region').then(({ mountJobWatch }) => {
         mountJobWatch(document.getElementById('mount-job-watch'));
         const scanBtn = document.getElementById('job-watch-scan');
         if (scanBtn) {

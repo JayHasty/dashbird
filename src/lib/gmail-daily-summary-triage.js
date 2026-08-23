@@ -247,6 +247,45 @@ export function triageMessageKey(msg) {
 }
 
 /**
+ * Build a digest JSON object from triaged mail without calling OpenRouter.
+ * `mapSynthItems` still fills company and drops events/OTP.
+ * @param {Array<object>} messages
+ * @param {Map<string, { category?: string, importance?: number, why?: string }>} [byId]
+ */
+export function heuristicSynthParsed(messages, byId = new Map()) {
+  const items = [];
+  for (const msg of Array.isArray(messages) ? messages : []) {
+    const subject = String(msg?.subject || '')
+      .replace(/^(re|fwd|fw):\s*/gi, '')
+      .trim();
+    const title = (subject || 'Follow up').slice(0, 200);
+    const excerpt = String(msg?.text || msg?.snippet || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 240);
+    const row = byId.get(triageMessageKey(msg));
+    const category = String(row?.category || '');
+    const needsReply = category === 'action' || category === 'scheduling';
+    items.push({
+      title,
+      company: '',
+      detail: excerpt || title,
+      needsReply,
+      deadline: null,
+      deadlineSource: needsReply ? 'response_48h' : 'none',
+      sourceRefs: [{ mailbox: msg.mailbox, messageId: msg.id }],
+    });
+  }
+  const n = items.length;
+  return {
+    summaryText: n
+      ? `Inbox scan without an LLM: ${n} possible follow-up${n === 1 ? '' : 's'}.`
+      : 'Inbox scan without an LLM: no action-looking mail in the window.',
+    items,
+  };
+}
+
+/**
  * @param {unknown} parsed
  * @param {Array<{ id?: string, mailbox?: string }>} messages
  * @returns {Map<string, { category: TriageCategory, importance: number, why: string }>}

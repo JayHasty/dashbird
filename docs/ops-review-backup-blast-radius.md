@@ -26,7 +26,7 @@ Scope: `docker-compose*.yml`, `deploy/`, `scripts/`, `src/lib/data-backup-schedu
 **Backup mechanism that exists today — two independent paths:**
 
 1. **In-app schedulers** (`src/lib/data-backup-schedule.js`, started from `src/server.js` at lines 240–241). Run inside the Node process on whichever host is up:
-   - **Daily full tarball** → `data/backups/daily-YYYY-MM-DD.tar.gz`, default **03:15 America/Los_Angeles**, retain **14** days. Snapshots `network.db`, `events-finder.db`, `telegram-intake.db` via `VACUUM INTO` (consistent even with WAL), excludes `data/backups`, and adds `public/data/bookmarks-personal.json` + `public/data/notes.md`.
+   - **Daily full tarball** → `data/backups/daily-YYYY-MM-DD.tar.gz`, default **03:15 America/Los_Angeles**, retain **14** days. Snapshots `network.db`, `events-finder.db`, `telegram-intake.db` via `VACUUM INTO` (consistent even with WAL), excludes `data/backups`, and adds `public/data/bookmarks-personal.json` + `public/data/bookmarks-work.json` + `public/data/notes.md`.
    - **Weekly tools+contacts** → `data/backups/tools-contacts-YYYY-MM-DD/`, default **Sunday 03:00**, retain **8** folders. Copies `network.db` (VACUUM), `network-assets/`, `tool-library.json`, `tool-library-assets/`, plus `manifest.json`.
    - Both write `public/data/last-backup.txt`, surfaced in the health sidebar via `/api/config`.
    - Config via `.env` (`DATA_BACKUP_*`); both default **on**.

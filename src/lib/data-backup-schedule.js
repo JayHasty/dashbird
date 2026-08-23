@@ -2,6 +2,8 @@
  * Scheduled backups:
  * - Daily full data tarball → data/backups/daily-YYYY-MM-DD.tar.gz (default 03:15 local)
  * - Weekly Tool Library + Network → data/backups/tools-contacts-YYYY-MM-DD/ (default Sun 03:00)
+ *
+ * Daily tarball also includes public bookmarks (personal + work) and notes.md.
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -27,6 +29,7 @@ const DAILY_SQLITE_DBS = [
 
 const DAILY_PUBLIC_FILES = [
   'public/data/bookmarks-personal.json',
+  'public/data/bookmarks-work.json',
   'public/data/notes.md',
 ];
 

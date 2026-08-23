@@ -96,7 +96,7 @@ Full rebuild on a fresh server. This is why off-host backups exist.
 6. **Unpack data into place**:
    ```bash
    tar -xzf /tmp/restore/daily.tar.gz -C /opt/dashbird
-   # tarball already contains data/... and public/data/{bookmarks-personal.json,notes.md}
+   # tarball already contains data/... and public/data/{bookmarks-personal.json,bookmarks-work.json,notes.md}
    rm -f data/*.db-wal data/*.db-shm data/vikunja/db/*.db-wal data/vikunja/db/*.db-shm
    ```
 7. **Boot + verify**:

@@ -59,12 +59,17 @@ jobs:
 
           # Anchor /data/ so we skip only the repo root data/ volume — not public/data/
           # (unanchored "data/" also matched public/data and left admin bookmarks stuck on VPS).
+          #
+          # bookmarks-work.json is gitignored. Exclude it from --delete so GitHub Actions
+          # (no local copy) cannot wipe cloud Admin tiles. Push explicitly when present.
           rsync -avz --delete \
             --exclude node_modules \
             --exclude .git \
             --exclude .env \
             --exclude /data/ \
             --exclude 'public/data/bookmarks-personal.json' \
+            --exclude 'public/data/bookmarks-work.json' \
+            --exclude 'public/data/bookmarks-*.json.bak' \
             --exclude 'public/data/notes.md' \
             --exclude 'public/data/last-backup.txt' \
             --exclude 'public/data/phone-lan-url.txt' \
@@ -75,8 +80,8 @@ jobs:
             rsync -avz data/gmail-daily-summary-guide.md "dashbird-cloud:${REMOTE_DIR}/data/gmail-daily-summary-guide.md"
           fi
 
-          # Fail loud if admin bookmarks did not sync (regression guard for the /data/ exclude).
           if [[ -f public/data/bookmarks-work.json ]]; then
+            rsync -avz public/data/bookmarks-work.json "dashbird-cloud:${REMOTE_DIR}/public/data/bookmarks-work.json"
             LOCAL_SUM="$(sha256sum public/data/bookmarks-work.json | awk '{print $1}')"
             REMOTE_SUM="$(ssh dashbird-cloud "sha256sum '${REMOTE_DIR}/public/data/bookmarks-work.json'" | awk '{print $1}')"
             if [[ "$LOCAL_SUM" != "$REMOTE_SUM" ]]; then
@@ -88,6 +93,16 @@ jobs:
               exit 1
             fi
             echo "Verified admin bookmarks synced (sha256=${LOCAL_SUM})"
+          else
+            echo "No local bookmarks-work.json in CI — leaving cloud Admin bookmarks untouched"
+            if ! ssh dashbird-cloud "test -s '${REMOTE_DIR}/public/data/bookmarks-work.json'"; then
+              echo "ERROR: cloud bookmarks-work.json missing or empty after deploy" >&2
+              exit 1
+            fi
+            if ! ssh dashbird-cloud "grep -q '\"Deployed projects\"' '${REMOTE_DIR}/public/data/bookmarks-work.json'"; then
+              echo "ERROR: cloud bookmarks-work.json missing Deployed projects section" >&2
+              exit 1
+            fi
           fi
 
           ssh dashbird-cloud "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' up -d --build --force-recreate dashboard caddy"

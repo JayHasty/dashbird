@@ -1,12 +1,12 @@
 /**
- * Synthesize a Daily Summary digest + action items via OpenRouter.
- * Cadence: one-time bootstrap, then every 30 minutes.
- * Rolling 10-day window; pinned items survive until unpinned (30s grace).
- * Open list is always chronological (newest first).
+ * Synthesize a Daily Summary digest + action items.
+ * Uses OpenRouter when a key is set (unless GMAIL_DAILY_SUMMARY_LLM=0);
+ * otherwise heuristic triage + digest. Cadence: bootstrap, then every 30 minutes.
  */
 import { loadGmailDailySummaryGuide } from './gmail-daily-summary-guide-store.js';
 import {
   classifyGmailDailySummaryMessages,
+  heuristicSynthParsed,
   triageMetaFromResult,
 } from './gmail-daily-summary-triage.js';
 import {
@@ -62,6 +62,17 @@ function envFirst(env, keys) {
  */
 function openRouterKey(env = process.env) {
   return String(env.OPENROUTER_API_KEY || '').trim();
+}
+
+/**
+ * Daily Summary can run without OpenRouter (heuristic triage + digest).
+ * Set GMAIL_DAILY_SUMMARY_LLM=0 to never send mail to OpenRouter.
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function dailySummaryLlmEnabled(env = process.env) {
+  const raw = envFirst(env, ['GMAIL_DAILY_SUMMARY_LLM', 'GMAIL_DAILY_SUMMARY_AI']).toLowerCase();
+  if (raw === '0' || raw === 'off' || raw === 'false' || raw === 'heuristic') return false;
+  return Boolean(openRouterKey(env));
 }
 
 /**
@@ -420,13 +431,7 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
       return { ok: false, fromCache: false, digest, error: digest.lastError, reason };
     }
 
-    if (!openRouterKey(env)) {
-      const digest = await saveGmailWeeklySummary({
-        ...prev,
-        lastError: 'openrouter_not_configured',
-      }, env);
-      return { ok: false, fromCache: false, digest, error: 'openrouter_not_configured', reason };
-    }
+    const llm = dailySummaryLlmEnabled(env);
 
     if (!mail.messages?.length) {
       const merged = mergeSynthesizedDigest(
@@ -452,6 +457,7 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
       guideMarkdown: guide,
       env,
       ignoreRateLimit: reason === 'manual',
+      heuristicOnly: !llm,
     });
     const triageMeta = triageMetaFromResult(triage);
     const digestMessages = Array.isArray(triage.kept) ? triage.kept : mail.messages;
@@ -490,34 +496,41 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
       };
     }
 
-    const chat = await openRouterChatJson(
-      env,
-      [
-        { role: 'system', content: buildSystemPrompt(guide, feedbackExamples) },
-        { role: 'user', content: buildUserPrompt(digestMessages) },
-      ],
-      {
-        ignoreRateLimit: reason === 'manual',
-        xTitle: 'dashbird-daily-summary',
-      },
-    );
-
-    if (!chat.ok) {
-      const digest = await saveGmailWeeklySummary({
-        ...prev,
-        windowDays: gmailWeeklySummaryDays(env),
-        lastError: chat.error || 'synth_failed',
-        triageMeta,
-      }, env);
-      return { ok: false, fromCache: false, digest, error: chat.error, reason, triageMeta };
+    let parsed = null;
+    let model = null;
+    let synthVia = 'heuristic';
+    if (llm) {
+      const chat = await openRouterChatJson(
+        env,
+        [
+          { role: 'system', content: buildSystemPrompt(guide, feedbackExamples) },
+          { role: 'user', content: buildUserPrompt(digestMessages) },
+        ],
+        {
+          ignoreRateLimit: reason === 'manual',
+          xTitle: 'dashbird-daily-summary',
+        },
+      );
+      if (chat.ok) {
+        parsed = chat.parsed;
+        model = chat.model;
+        synthVia = 'llm';
+      } else {
+        console.warn(
+          `[daily-summary] OpenRouter synth failed (${chat.error || 'synth_failed'}); using heuristic digest`,
+        );
+      }
+    }
+    if (!parsed) {
+      parsed = heuristicSynthParsed(digestMessages, triage.byId);
     }
 
     // mapSynthItems still applies guide-match / event / OTP hard excludes (authoritative).
-    const items = mapSynthItems(chat.parsed, mail.messages, guide);
+    const items = mapSynthItems(parsed, mail.messages, guide);
     const merged = mergeSynthesizedDigest(
       prev,
       {
-        summaryText: String(chat.parsed.summaryText || '').trim()
+        summaryText: String(parsed.summaryText || '').trim()
           || prev.summaryText
           || 'Daily inbox digest updated.',
         windowDays: mail.days || gmailWeeklySummaryDays(env),
@@ -533,7 +546,8 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
       ok: true,
       fromCache: false,
       digest,
-      model: chat.model,
+      model,
+      synthVia,
       triageModel: triage.model,
       triageVia: triage.via,
       reason,

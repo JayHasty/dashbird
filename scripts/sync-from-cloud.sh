@@ -45,7 +45,7 @@ echo "[dashbird] Pulling data/ from ${HOST}:${REMOTE_DIR}/ (excluding Keep Notes
 mkdir -p "$ROOT/data" "$ROOT/public/data"
 rsync -avz "${RSYNC_DATA_EXCLUDES[@]}" "${HOST}:${REMOTE_DIR}/data/" "$ROOT/data/"
 
-for f in bookmarks-personal.json notes.md last-backup.txt; do
+for f in bookmarks-personal.json bookmarks-work.json notes.md last-backup.txt; do
   rsync -avz "${HOST}:${REMOTE_DIR}/public/data/$f" "$ROOT/public/data/$f" 2>/dev/null || true
 done
 

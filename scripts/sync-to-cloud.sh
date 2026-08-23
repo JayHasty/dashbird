@@ -34,12 +34,18 @@ HOST="${HOST:?Set CLOUD_HOST=root@your-server-ip (env or .env)}"
 
 # Anchor /data/ so we skip only the repo root data/ volume — not public/data/
 # (unanchored "data/" also matched public/data and left admin bookmarks stuck on VPS).
+#
+# bookmarks-work.json is gitignored live data. It MUST be excluded from --delete
+# so CI (no local copy) cannot wipe cloud Admin tiles; when the laptop has a copy
+# we push it explicitly below.
 RSYNC_CODE=(rsync -avz --delete
   --exclude node_modules
   --exclude .git
   --exclude .env
   --exclude /data/
   --exclude 'public/data/bookmarks-personal.json'
+  --exclude 'public/data/bookmarks-work.json'
+  --exclude 'public/data/bookmarks-*.json.bak'
   --exclude 'public/data/notes.md'
   --exclude 'public/data/last-backup.txt'
   --exclude 'public/data/phone-lan-url.txt'
@@ -49,16 +55,24 @@ echo "[dashbird] Syncing repo code to ${HOST}:${REMOTE_DIR}/"
 ssh "$HOST" "mkdir -p '${REMOTE_DIR}/data' '${REMOTE_DIR}/public/data' '${REMOTE_DIR}/data/vikunja/db' '${REMOTE_DIR}/data/vikunja/files'"
 "${RSYNC_CODE[@]}" "$ROOT/" "${HOST}:${REMOTE_DIR}/"
 
-# Fail loud if admin bookmarks did not sync (regression guard for the /data/ exclude).
+# Push Admin bookmarks when present locally (never delete remote when absent).
 WORK_BM="$ROOT/public/data/bookmarks-work.json"
 if [[ -f "$WORK_BM" ]]; then
+  echo "[dashbird] Syncing Admin bookmarks (public/data/bookmarks-work.json)"
+  rsync -avz "$WORK_BM" "${HOST}:${REMOTE_DIR}/public/data/bookmarks-work.json"
   LOCAL_SUM="$(sha256sum "$WORK_BM" | awk '{print $1}')"
   REMOTE_SUM="$(ssh "$HOST" "sha256sum '${REMOTE_DIR}/public/data/bookmarks-work.json'" | awk '{print $1}')"
   if [[ "$LOCAL_SUM" != "$REMOTE_SUM" ]]; then
     echo "[dashbird] ERROR: public/data/bookmarks-work.json mismatch after rsync (local=${LOCAL_SUM} remote=${REMOTE_SUM})" >&2
     exit 1
   fi
+  if ! grep -q '"Deployed projects"' "$WORK_BM"; then
+    echo "[dashbird] ERROR: local bookmarks-work.json missing Deployed projects section" >&2
+    exit 1
+  fi
   echo "[dashbird] Verified admin bookmarks synced (sha256=${LOCAL_SUM})"
+else
+  echo "[dashbird] No local bookmarks-work.json — leaving cloud Admin bookmarks untouched"
 fi
 
 GUIDE_MD="$ROOT/data/gmail-daily-summary-guide.md"
@@ -93,7 +107,7 @@ if [[ "$SYNC_DATA" == "1" ]]; then
     echo "[dashbird] Pushing persistent data/ (tools, network, events, assets — never commit these)"
     rsync -avz "${RSYNC_DATA_EXCLUDES[@]}" "$ROOT/data/" "${HOST}:${REMOTE_DIR}/data/"
 
-    for f in bookmarks-personal.json notes.md last-backup.txt; do
+    for f in bookmarks-personal.json bookmarks-work.json notes.md last-backup.txt; do
       if [[ -f "$ROOT/public/data/$f" ]]; then
         rsync -avz "$ROOT/public/data/$f" "${HOST}:${REMOTE_DIR}/public/data/$f"
       fi

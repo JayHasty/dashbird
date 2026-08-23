@@ -147,6 +147,9 @@ function isValidHref(href) {
 
 /**
  * Add a bookmark item to a section (section is created if missing).
+ * Appends to the existing section — never replaces sibling tiles. If the live
+ * file was missing (e.g. wiped by deploy), this still starts from empty; sync
+ * scripts must exclude bookmarks-work.json from rsync --delete.
  * @param {string} scope
  * @param {{ section: string, word: string, href: string, title?: string, icon?: string }} input
  */
@@ -163,6 +166,15 @@ export async function addBookmark(scope, input) {
 
   return withScopeLock(scope, async () => {
     const data = await readScope(scope);
+    const priorCount = (data.sections || []).reduce(
+      (n, s) => n + (Array.isArray(s?.items) ? s.items.length : 0),
+      0,
+    );
+    if (priorCount === 0) {
+      console.warn(
+        `[bookmarks] addBookmark(${scope}): live file had 0 items — appending "${word}" onto an empty catalog. Check deploy/rsync did not delete bookmarks-work.json.`,
+      );
+    }
     let sec = data.sections.find(
       (s) => s && normStr(s.title).toLowerCase() === section.toLowerCase(),
     );

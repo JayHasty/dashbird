@@ -76,6 +76,42 @@ function extractJsonObject(content) {
 }
 
 /**
+ * 401 = bad/revoked key (stop). 403 is usually per-model (privacy/ToS/region) — try the next slug.
+ * @param {number} status
+ */
+export function openRouterShouldRetryStatus(status) {
+  const s = Number(status);
+  if (s === 401) return false;
+  if (s === 400 || s === 402 || s === 403 || s === 404 || s === 408 || s === 429) return true;
+  if (s >= 500) return true;
+  return false;
+}
+
+/**
+ * @param {Response} r
+ */
+async function errorSnippet(r) {
+  const text = await r.text().catch(() => '');
+  try {
+    const j = JSON.parse(text);
+    const msg = j?.error?.message || j?.message || '';
+    return String(msg).replace(/\s+/g, ' ').trim().slice(0, 180);
+  } catch {
+    return String(text).replace(/\s+/g, ' ').trim().slice(0, 180);
+  }
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+function httpReferer(env = process.env) {
+  return (
+    String(env.OPENROUTER_HTTP_REFERER || '').trim()
+    || 'https://dashbird.jayhasty.com'
+  );
+}
+
+/**
  * @param {NodeJS.ProcessEnv} [env]
  * @param {Array<{ role: string, content: string }>} messages
  * @param {{
@@ -103,61 +139,83 @@ export async function openRouterChatJson(env, messages, opts = {}) {
   const xTitle =
     String(opts.xTitle || env.OPENROUTER_X_TITLE || 'dashbird-daily-summary').trim()
     || 'dashbird-daily-summary';
+  const headers = {
+    Authorization: `Bearer ${openRouterKey(env)}`,
+    'Content-Type': 'application/json',
+    'HTTP-Referer': httpReferer(env),
+    'X-Title': xTitle,
+  };
+
+  /**
+   * @param {string} model
+   * @param {boolean} jsonMode
+   */
+  async function post(model, jsonMode) {
+    const body = {
+      model,
+      temperature: 0.2,
+      max_tokens: maxTokens,
+      messages,
+    };
+    if (jsonMode) body.response_format = { type: 'json_object' };
+    return fetch(`${OPENROUTER_BASE}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  }
+
   let lastError = 'openrouter_failed';
   for (let i = 0; i < models.length; i += 1) {
     const model = models[i];
-    let r;
-    try {
-      r = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${openRouterKey(env)}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': env.OPENROUTER_HTTP_REFERER || 'http://localhost',
-          'X-Title': xTitle,
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.2,
-          max_tokens: maxTokens,
-          response_format: { type: 'json_object' },
-          messages,
-        }),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (e) {
-      lastError = String(e?.message || e || 'openrouter_unreachable');
-      continue;
-    }
-    if (!r.ok) {
+    let jsonMode = true;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let r;
+      try {
+        r = await post(model, jsonMode);
+      } catch (e) {
+        lastError = String(e?.message || e || 'openrouter_unreachable');
+        break;
+      }
+      if (r.ok) {
+        const j = await r.json().catch(() => ({}));
+        const parsed = extractJsonObject(j?.choices?.[0]?.message?.content);
+        if (!parsed || typeof parsed !== 'object') {
+          lastError = 'parse_failed';
+          break;
+        }
+        rateLimitUntilMs = 0;
+        return { ok: true, parsed, model: String(j?.model || model) };
+      }
+      const snippet = await errorSnippet(r);
       lastError = `openrouter_http_${r.status}`;
-      if (r.status === 401 || r.status === 403) break;
+      if (snippet) {
+        console.warn(`[openrouter] ${model} ${lastError}: ${snippet}`);
+      }
+      // Some free models reject json_object (400) — retry the same slug as plain text.
+      if (r.status === 400 && jsonMode) {
+        jsonMode = false;
+        continue;
+      }
+      if (r.status === 401) {
+        return { ok: false, error: lastError };
+      }
       if (r.status === 429) {
         const ra = Number(r.headers.get('retry-after'));
         const waitSec = Number.isFinite(ra) && ra > 0 ? Math.min(Math.max(ra, 2), 45) : 5;
         if (i < models.length - 1) {
-          // Interactive callers can opt out of the back-off sleep and fall straight
-          // through to the next (typically more reliable) model.
           if (opts.backoff429 !== false) {
             await new Promise((resolve) => setTimeout(resolve, waitSec * 1000));
           }
-          continue;
+          break;
         }
         rateLimitUntilMs = Date.now() + Math.max(waitSec, 60) * 1000;
-        break;
+        return { ok: false, error: lastError };
       }
-      // 404 = model/endpoint unavailable right now (common for free tiers); try the next model.
-      if (r.status === 402 || r.status === 404 || r.status >= 500) continue;
-      break;
+      if (openRouterShouldRetryStatus(r.status)) break;
+      return { ok: false, error: lastError };
     }
-    const j = await r.json().catch(() => ({}));
-    const parsed = extractJsonObject(j?.choices?.[0]?.message?.content);
-    if (!parsed || typeof parsed !== 'object') {
-      lastError = 'parse_failed';
-      continue;
-    }
-    rateLimitUntilMs = 0;
-    return { ok: true, parsed, model };
   }
   return { ok: false, error: lastError };
 }

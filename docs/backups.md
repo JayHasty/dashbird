@@ -4,7 +4,7 @@ Dashbird keeps two automatic backups of your live data (both on by default while
 
 | Schedule | Output | Scope |
 |----------|--------|-------|
-| **Daily** — every day 03:15 `America/Los_Angeles` | `data/backups/daily-YYYY-MM-DD.tar.gz` | Full `data/` tree + `public/data/bookmarks-personal.json` + `public/data/notes.md` |
+| **Daily** — every day 03:15 `America/Los_Angeles` | `data/backups/daily-YYYY-MM-DD.tar.gz` | Full `data/` tree + `public/data/bookmarks-{personal,work}.json` + `public/data/notes.md` |
 | **Weekly** — Sunday 03:00 same timezone | `data/backups/tools-contacts-YYYY-MM-DD/` | Network CRM (`network.db`, assets) + Tool Library (`tool-library.json`, assets) |
 
 Both update **`public/data/last-backup.txt`**, which feeds the health sidebar via `/api/config`.

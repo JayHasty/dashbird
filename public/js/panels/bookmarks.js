@@ -270,6 +270,26 @@ function showBookmarkSkeleton(root, count = 6) {
   root.appendChild(grid);
 }
 
+function countBookmarkItems(data) {
+  if (!data || !Array.isArray(data.sections)) return 0;
+  let n = 0;
+  for (const sec of data.sections) {
+    if (Array.isArray(sec?.items)) n += sec.items.length;
+  }
+  return n;
+}
+
+/**
+ * Guard against applying a server payload that wiped most tiles (e.g. after a
+ * deploy deleted the live JSON and Add rewrote a one-item file). Prefer keeping
+ * the in-memory / cached view and forcing a reload for the operator to notice.
+ */
+function isCatastrophicBookmarkShrink(prev, next) {
+  const before = countBookmarkItems(prev);
+  const after = countBookmarkItems(next);
+  return before >= 5 && after < Math.max(2, Math.floor(before / 2));
+}
+
 async function apiJson(method, path, body) {
   const r = await fetch(path, {
     method,
@@ -537,8 +557,16 @@ export function createBookmarksCoordinator() {
       if (!g) return;
       // Prefer API payload so we never re-fetch static JSON after a successful write
       // (avoids SPA/HTML or stale responses looking like "Invalid JSON").
-      if (saved.data) g.applyData(saved.data);
-      else await g.reload(true);
+      if (saved.data) {
+        if (isCatastrophicBookmarkShrink(g.getData(), saved.data)) {
+          window.alert(
+            'Bookmark was saved, but the server returned far fewer tiles than before — not applying that wipe. Hard-refresh Admin bookmarks; if they are still wrong, restore from backup.',
+          );
+          await g.reload(true);
+        } else {
+          g.applyData(saved.data);
+        }
+      } else await g.reload(true);
     }
   }
 
@@ -832,6 +860,7 @@ export async function mountBookmarkGrid(root, dataPath, emptyHint, coordinator =
         (currentData?.sections || [])
           .map((s) => (typeof s.title === 'string' ? s.title.trim() : ''))
           .filter(Boolean),
+      getData: () => currentData,
       reload: (force) => loadAndMount(force),
       applyData,
       rerender: () => render(),

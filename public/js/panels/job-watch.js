@@ -555,8 +555,9 @@ export function mountJobWatch(root) {
     const sig = allIds.join('|');
     if (filters.sources) {
       filters.sources = new Set([...filters.sources].filter((id) => allIds.includes(id)));
-      // Empty set means match nothing — do not coerce back to "all".
-      if (filters.sources.size === allIds.length) filters.sources = null;
+      // Stale saved company ids → treat as "all" so the panel is not blank after a source rename.
+      if (filters.sources.size === 0) filters.sources = null;
+      else if (filters.sources.size === allIds.length) filters.sources = null;
     }
     if (sig === companyFilterSig && companyChecks.childElementCount) {
       for (const input of companyChecks.querySelectorAll('input[type="checkbox"]')) {
@@ -731,23 +732,25 @@ export function mountJobWatch(root) {
     const stars = Number(item.matchStars || 0);
     if (stars < filters.minStars) return false;
 
-    // Geography and remote style are separate AND groups.
-    if (filters.locations) {
-      const regions = locationRegions(
-        Array.isArray(item.locations) ? item.locations : [],
-        isRemoteGeographyLabel,
-      );
-      const hit = [...filters.locations].some((want) =>
-        regions.some((have) => have.toLowerCase() === String(want).toLowerCase()),
-      );
-      if (!hit) return false;
-    }
-    if (filters.remoteModes) {
-      const modeLabel = String(item.workMode?.label || '');
-      const hit = [...filters.remoteModes].some(
-        (want) => modeLabel.toLowerCase() === String(want).toLowerCase(),
-      );
-      if (!hit) return false;
+    // Region / remote filters apply to live postings only — closed watch lanes have no office yet.
+    if (open) {
+      if (filters.locations) {
+        const regions = locationRegions(
+          Array.isArray(item.locations) ? item.locations : [],
+          isRemoteGeographyLabel,
+        );
+        const hit = [...filters.locations].some((want) =>
+          regions.some((have) => have.toLowerCase() === String(want).toLowerCase()),
+        );
+        if (!hit) return false;
+      }
+      if (filters.remoteModes) {
+        const modeLabel = String(item.workMode?.label || '');
+        const hit = [...filters.remoteModes].some(
+          (want) => modeLabel.toLowerCase() === String(want).toLowerCase(),
+        );
+        if (!hit) return false;
+      }
     }
     return true;
   }
@@ -879,6 +882,16 @@ export function mountJobWatch(root) {
       }
 
       list.append(li);
+    }
+
+    if (!list.childElementCount) {
+      const empty = document.createElement('p');
+      empty.className = 'muted job-watch__sub';
+      empty.textContent =
+        filters.status === 'closed'
+          ? 'No unposted watch lanes — try Posted: All or widen Region.'
+          : 'No roles match these filters — open Filters to widen region or companies.';
+      list.append(empty);
     }
 
     const showCands = candidates.filter(

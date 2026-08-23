@@ -9,6 +9,7 @@ import {
   buildTriageUserPrompt,
   classifyGmailDailySummaryMessages,
   filterMessagesForDigest,
+  heuristicSynthParsed,
   heuristicTriageMessage,
   mapTriageParsedToById,
   messageShouldEnterDigest,
@@ -116,7 +117,7 @@ assert.match(prompt, /prefer less/i);
 assert.match(prompt, /insurance paperwork/);
 
 const userPrompt = buildTriageUserPrompt(fixtures);
-assert.match(userPrompt, /jay\.intake\.box@gmail\.com:1/);
+assert.match(userPrompt, /intake@example\.com:1/);
 assert.match(userPrompt, /Action required: sign the NDA/);
 
 const mapped = mapTriageParsedToById(
@@ -168,6 +169,14 @@ const otpItem = {
   sources: [{ subject: 'Verification code', from: 'noreply@example.com' }],
 };
 assert.equal(shouldExcludeDailySummaryItem(otpItem, ''), 'verification');
+
+const heuristicParsed = heuristicSynthParsed(
+  kept,
+  new Map(fixtures.map((fx) => [triageMessageKey(fx), heuristicTriageMessage(fx)])),
+);
+assert.equal(heuristicParsed.items.length, 3);
+assert.equal(heuristicParsed.items[0].sourceRefs[0].mailbox, 'intake@example.com');
+assert.match(String(heuristicParsed.summaryText), /without an LLM/i);
 
 console.log('validate-daily-summary-triage: ok');
 console.log(
