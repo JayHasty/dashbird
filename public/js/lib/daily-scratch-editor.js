@@ -171,6 +171,12 @@ export function mountScratchPad(body, opts) {
     if (!input || input.dataset.bound === '1') return;
     input.dataset.bound = '1';
     input.addEventListener('pointerdown', (e) => e.stopPropagation());
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Backspace' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      exitListFormatting(el, { focus: 'start' });
+      syncFromEditor();
+    });
     input.addEventListener('change', () => {
       el.classList.toggle('scratch-line--checked', input.checked);
       scheduleCheckDelete(el, input.checked);
@@ -257,6 +263,10 @@ export function mountScratchPad(body, opts) {
       }
       if (node.nodeType !== Node.ELEMENT_NODE) continue;
       const el = /** @type {HTMLElement} */ (node);
+      if (el.classList.contains('scratch-line--check') && !el.querySelector('input.scratch-line__box')) {
+        el.replaceWith(makePlainLine(lineText(el)));
+        continue;
+      }
       if (el.classList.contains('scratch-line')) continue;
       if (el.tagName === 'BR') {
         el.replaceWith(makePlainLine(''));
@@ -466,6 +476,98 @@ export function mountScratchPad(body, opts) {
   }
 
   /**
+   * Line under the caret, including when the caret sits on the editor
+   * immediately before a list row (just in front of the checkbox).
+   * @param {EventTarget | Node | null} fromTarget
+   * @returns {HTMLElement | null}
+   */
+  function lineFromCaret(fromTarget) {
+    if (fromTarget instanceof Node) {
+      const fromEvent = lineFromNode(fromTarget);
+      if (fromEvent) return fromEvent;
+    }
+    const sel = window.getSelection();
+    if (!sel?.rangeCount) return lineFromNode(document.activeElement);
+    const range = sel.getRangeAt(0);
+    const fromSel = lineFromNode(range.startContainer);
+    if (fromSel) return fromSel;
+    if (range.startContainer === editor) {
+      const at = editor.childNodes[range.startOffset];
+      if (at instanceof Node) return lineFromNode(at);
+    }
+    return lineFromNode(document.activeElement);
+  }
+
+  /**
+   * True when the caret is at/before the line's text — start of the text
+   * span, the gap after the checkbox, the checkbox itself, or the editor
+   * caret sitting immediately before this row.
+   * @param {HTMLElement} line
+   */
+  function isCaretBeforeLineText(line) {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.classList.contains('scratch-line__box') && line.contains(active)) {
+      return true;
+    }
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return false;
+    const range = sel.getRangeAt(0);
+
+    if (range.startContainer === editor) {
+      return editor.childNodes[range.startOffset] === line;
+    }
+    if (range.startContainer !== line && !line.contains(range.startContainer)) return false;
+
+    // Empty checklist row: any caret in the row is "before the text".
+    if (!lineText(line).replace(/[\u00a0\u200B\uFEFF]/g, '')) return true;
+
+    const textEl = line.querySelector('.scratch-line__text') || line;
+    if (range.startContainer === textEl || textEl.contains(range.startContainer)) {
+      try {
+        const pre = document.createRange();
+        pre.selectNodeContents(textEl);
+        pre.setEnd(range.startContainer, range.startOffset);
+        const offset = pre.toString().replace(/[\u00a0\u200B\uFEFF]/g, '').length;
+        return offset === 0;
+      } catch {
+        return false;
+      }
+    }
+
+    // Parent line is contentEditable=false; Chrome often parks the caret on
+    // the line at the index of the text span (right after the checkbox).
+    if (range.startContainer === line) {
+      const textNode = line.querySelector('.scratch-line__text');
+      if (!textNode) return range.startOffset === 0;
+      const idx = [...line.childNodes].indexOf(textNode);
+      return idx < 0 || range.startOffset <= idx;
+    }
+
+    return false;
+  }
+
+  /**
+   * @param {HTMLElement} line
+   */
+  function isListLine(line) {
+    return line.classList.contains('scratch-line--check') || line.classList.contains('scratch-line--bullet');
+  }
+
+  /**
+   * Backspace at the checkbox/bullet marker → plain text, keep the words.
+   * @param {Event} e
+   */
+  function tryExitListOnDelete(e) {
+    const line = lineFromCaret(e.target);
+    if (!line || !isListLine(line)) return false;
+    if (!isCaretBeforeLineText(line)) return false;
+    e.preventDefault();
+    exitListFormatting(line, { focus: 'start' });
+    syncFromEditor();
+    return true;
+  }
+
+  /**
    * @param {HTMLElement} line
    * @param {string} text
    */
@@ -612,12 +714,21 @@ export function mountScratchPad(body, opts) {
     document.execCommand('insertText', false, text);
   });
 
+  editor.addEventListener(
+    'beforeinput',
+    (e) => {
+      if (e.isComposing) return;
+      if (e.inputType !== 'deleteContentBackward') return;
+      tryExitListOnDelete(e);
+    },
+    true,
+  );
+
   editor.addEventListener('keydown', (e) => {
     if (e.isComposing) return;
-    const line = e.target instanceof Node ? lineFromNode(e.target) : lineFromNode(window.getSelection()?.anchorNode ?? null);
+    const line = lineFromCaret(e.target);
     if (!line) return;
-    const isList =
-      line.classList.contains('scratch-line--check') || line.classList.contains('scratch-line--bullet');
+    const isList = isListLine(line);
     if (!isList) return;
 
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -643,14 +754,10 @@ export function mountScratchPad(body, opts) {
       return;
     }
 
-    // Backspace at the start of a check/bullet line erases the marker and
-    // exits list formatting for that line (text is kept).
+    // Backspace at/before the text (including the gap after the checkbox)
+    // removes the marker and exits list formatting for that line.
     if (e.key === 'Backspace' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      const offset = caretOffsetInLine(line);
-      if (offset !== 0) return;
-      e.preventDefault();
-      exitListFormatting(line, { focus: 'start' });
-      syncFromEditor();
+      tryExitListOnDelete(e);
     }
   });
 

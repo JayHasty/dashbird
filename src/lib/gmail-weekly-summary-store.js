@@ -1,6 +1,7 @@
 /**
  * Persisted Daily Summary digest (summary prose + durable action items).
- * Rolling 10-day window: unpinned items older than that are deleted.
+ * Rolling 10-day window: unpinned open items older than that are deleted.
+ * Dismissed/tasked tombstones are kept so rescans do not resurrect them.
  * Pinned items stay until unpinned (then 30s grace if past the window).
  * List order is always chronological (newest first); pin does not reorder.
  */
@@ -674,7 +675,12 @@ export function pruneExpiredGmailDailySummary(digest, nowMs = Date.now(), opts =
     }
 
     if (pastRetention) {
-      // Unpinned (or closed) past window — hard-delete.
+      // Dismissed/tasked tombstones survive past the rolling window.
+      if (it.status === 'dismissed' || it.status === 'tasked') {
+        items.push(it);
+        continue;
+      }
+      // Unpinned open past window — hard-delete.
       changed = true;
       continue;
     }
@@ -775,6 +781,42 @@ export async function saveGmailWeeklySummary(digest, env = process.env) {
   await fs.mkdir(path.dirname(p), { recursive: true });
   await fs.writeFile(p, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
   return next;
+}
+
+/**
+ * Merge closed tombstones from the latest on-disk digest into a candidate save.
+ * Heals races where dismiss/task happened while a scan was in flight.
+ * @param {GmailWeeklyDigest} merged
+ * @param {GmailWeeklyDigest} latest
+ */
+export function reconcileDigestClosedTombstones(merged, latest) {
+  const mergedNorm = normalizeDigest(merged);
+  const latestNorm = normalizeDigest(latest);
+  /** @type {Map<string, GmailWeeklyItem>} */
+  const closedById = new Map();
+  for (const it of [...mergedNorm.items, ...latestNorm.items]) {
+    if (it.status !== 'dismissed' && it.status !== 'tasked') continue;
+    const prev = closedById.get(it.id);
+    const prevMs = prev ? Date.parse(String(prev.updatedAt || '')) : 0;
+    const nextMs = Date.parse(String(it.updatedAt || ''));
+    if (!prev || (Number.isFinite(nextMs) && nextMs >= prevMs)) {
+      closedById.set(it.id, it);
+    }
+  }
+  const closed = [...closedById.values()];
+  if (!closed.length) return mergedNorm;
+  const closedFingerprints = new Set(closed.map((it) => it.fingerprint).filter(Boolean));
+  const closedSourceKeys = new Set(closed.flatMap((it) => itemSourceKeys(it)));
+  const open = mergedNorm.items
+    .filter((it) => it.status === 'open')
+    .filter(
+      (it) =>
+        !matchesClosedDailySummaryItem(it, closed, closedFingerprints, closedSourceKeys),
+    );
+  const items = dropOpenItemsMatchingClosed(
+    collapseDuplicateDailySummaryItems([...open, ...closed]),
+  );
+  return { ...mergedNorm, items };
 }
 
 /**

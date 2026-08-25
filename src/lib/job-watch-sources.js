@@ -24,12 +24,68 @@ const GOOGLE_ANCHOR =
 const GOOGLE_LOCATION = /class="r0wTof\s*">([^<]+)<\/span>/g;
 
 /**
+ * Bundled stub in src/data/job-watch-targets.json uses this placeholder.
+ * @param {unknown} label
+ * @returns {boolean}
+ */
+export function isPlaceholderCompanyLabel(label) {
+  return /^example\s*co\.?$/i.test(String(label || '').trim());
+}
+
+/**
+ * Empty public-repo stub — not a real watch board.
+ * @param {object} config
+ * @returns {boolean}
+ */
+export function isBundledStubConfig(config) {
+  const sources = Array.isArray(config?.sources) ? config.sources : [];
+  const targets = Array.isArray(config?.targets) ? config.targets : [];
+  if (sources.length || targets.length) return false;
+  const urls = [config?.boardUrl, config?.boardUrl, config?.careersUiUrl, config?.careersUiUrl]
+    .map((u) => String(u || ''))
+    .join(' ');
+  return (
+    isPlaceholderCompanyLabel(config?.company)
+    || /\/boards\/example(?:\/|$|\?)/i.test(urls)
+    || /greenhouse\.io\/example(?:\/|$|\?)/i.test(urls)
+  );
+}
+
+/**
+ * Unique companies on listing rows (watch lanes + candidates).
+ * Skips the bundled "Example Co" placeholder.
+ * @param {Array<{ source?: string, sourceId?: string, sourceLabel?: string }>} [targets]
+ * @param {Array<{ source?: string, sourceId?: string, sourceLabel?: string }>} [candidates]
+ * @returns {Array<{ id: string, label: string }>}
+ */
+export function collectListingCompanies(targets = [], candidates = []) {
+  /** @type {Map<string, { id: string, label: string }>} */
+  const byId = new Map();
+  const add = (id, label) => {
+    const key = String(id || '').trim();
+    if (!key) return;
+    const name = String(label || '').trim() || key;
+    if (isPlaceholderCompanyLabel(name)) return;
+    const prev = byId.get(key);
+    if (!prev) byId.set(key, { id: key, label: name });
+    else if (name !== key && prev.label === key) byId.set(key, { id: key, label: name });
+  };
+  for (const t of targets) add(t?.source || t?.sourceId, t?.sourceLabel);
+  for (const c of candidates) add(c?.sourceId || c?.source, c?.sourceLabel);
+  return [...byId.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+  );
+}
+
+/**
  * @param {object} config targets file
  * @returns {Array<object>} sources
  */
 export function normalizeSources(config) {
   const listed = Array.isArray(config?.sources) ? config.sources : [];
   if (listed.length) return listed;
+  // Public stub has no sources/targets — do not invent a fake "Example Co" board.
+  if (isBundledStubConfig(config)) return [];
   // Pre-multi-source config: a single Greenhouse board at the top level.
   return [
     {

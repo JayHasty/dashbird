@@ -15,7 +15,17 @@ import {
   scoreToStars,
 } from './job-watch-assess.js';
 import { parseLocations } from './job-watch-detail.js';
-import { fetchSourceDetail, fetchSourceJobs, normalizeSources } from './job-watch-sources.js';
+import {
+  collectListingCompanies,
+  fetchSourceDetail,
+  fetchSourceJobs,
+  isBundledStubConfig,
+  isPlaceholderCompanyLabel,
+  normalizeSources,
+} from './job-watch-sources.js';
+
+/** @type {Promise<{ ok: boolean, error?: string, state: object, jobCount?: number }> | null} */
+let scanInFlight = null;
 
 /** Only surfaced rows get a detail fetch, so a scan stays a handful of requests. */
 const MAX_DETAIL_FETCHES = 12;
@@ -47,9 +57,30 @@ function detailIsFresh(detail, job) {
  * @param {{ force?: boolean }} [opts]
  */
 export async function runJobWatchScan(env = process.env, opts = {}) {
+  if (scanInFlight) return scanInFlight;
+  scanInFlight = runJobWatchScanUnlocked(env, opts).finally(() => {
+    scanInFlight = null;
+  });
+  return scanInFlight;
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ force?: boolean }} [opts]
+ */
+async function runJobWatchScanUnlocked(env = process.env, opts = {}) {
   const config = await loadJobWatchTargets();
   const state = await loadJobWatchState(env);
   const sources = normalizeSources(config);
+  if (!sources.length) {
+    const now = new Date().toISOString();
+    state.lastScanAt = now;
+    state.lastScanError = isBundledStubConfig(config)
+      ? 'targets_not_configured'
+      : 'no_sources';
+    await saveJobWatchState(state, env);
+    return { ok: false, error: state.lastScanError, state, jobCount: 0 };
+  }
   const sourceById = new Map(sources.map((s) => [s.id, s]));
   const now = new Date().toISOString();
 
@@ -294,14 +325,16 @@ export async function runJobWatchScan(env = process.env, opts = {}) {
  */
 export async function getJobWatchPayload(env = process.env) {
   const config = await loadJobWatchTargets();
-  let state = await loadJobWatchState(env);
+  const state = await loadJobWatchState(env);
 
-  // Lazy scan if never run or stale (>2h)
+  // Never block GET on a board crawl — a refresh would hang or look empty.
+  // Stale snapshots still render immediately; a scan runs in the background.
   const staleMs = 2 * 60 * 60 * 1000;
   const last = state.lastScanAt ? Date.parse(state.lastScanAt) : 0;
   if (!last || Date.now() - last > staleMs) {
-    const scanned = await runJobWatchScan(env);
-    state = scanned.state;
+    void runJobWatchScan(env).catch((e) => {
+      console.warn('[job-watch] background scan', e?.message || e);
+    });
   }
 
   const priorityRank = (p) => {
@@ -404,11 +437,20 @@ export async function getJobWatchPayload(env = process.env) {
       };
     });
 
+  const listingSources = collectListingCompanies(targets, candidates);
+
   return {
     ok: true,
-    company: config.company || 'Anthropic',
+    company: isPlaceholderCompanyLabel(config.company)
+      ? listingSources[0]?.label || null
+      : config.company || 'Anthropic',
     careersUiUrl: config.careersUiUrl,
-    sources: sources.map((s) => ({ id: s.id, label: s.label || s.id, type: s.type })),
+    // Filter list = companies on the listing, not the bundled stub's "Example Co".
+    sources: listingSources.length
+      ? listingSources
+      : sources
+          .filter((s) => !isPlaceholderCompanyLabel(s.label || s.id))
+          .map((s) => ({ id: s.id, label: s.label || s.id, type: s.type })),
     lastScanAt: state.lastScanAt,
     lastScanError: state.lastScanError,
     scanIntervalMs: 2 * 60 * 60 * 1000,

@@ -49,11 +49,27 @@ RSYNC_CODE=(rsync -avz --delete
   --exclude 'public/data/notes.md'
   --exclude 'public/data/last-backup.txt'
   --exclude 'public/data/phone-lan-url.txt'
+  --exclude /deploy/jayhasty-site/
 )
 
 echo "[dashbird] Syncing repo code to ${HOST}:${REMOTE_DIR}/"
 ssh "$HOST" "mkdir -p '${REMOTE_DIR}/data' '${REMOTE_DIR}/public/data' '${REMOTE_DIR}/data/vikunja/db' '${REMOTE_DIR}/data/vikunja/files'"
 "${RSYNC_CODE[@]}" "$ROOT/" "${HOST}:${REMOTE_DIR}/"
+
+# Static portfolio is gitignored (built from portfolio/products/website).
+# Never --delete it with the code sync — CI has no copy and would 404 jayhasty.com.
+SITE_DIR="$ROOT/deploy/jayhasty-site"
+if [[ -f "$SITE_DIR/index.html" ]]; then
+  echo "[dashbird] Syncing static portfolio (deploy/jayhasty-site)"
+  ssh "$HOST" "mkdir -p '${REMOTE_DIR}/deploy/jayhasty-site'"
+  rsync -avz --delete "$SITE_DIR/" "${HOST}:${REMOTE_DIR}/deploy/jayhasty-site/"
+else
+  echo "[dashbird] No local deploy/jayhasty-site — leaving cloud portfolio files untouched"
+fi
+if ! ssh "$HOST" "test -s '${REMOTE_DIR}/deploy/jayhasty-site/index.html'"; then
+  echo "[dashbird] ERROR: cloud deploy/jayhasty-site/index.html missing after sync (jayhasty.com would 404)" >&2
+  exit 1
+fi
 
 # Push Admin bookmarks when present locally (never delete remote when absent).
 WORK_BM="$ROOT/public/data/bookmarks-work.json"
@@ -79,6 +95,21 @@ GUIDE_MD="$ROOT/data/gmail-daily-summary-guide.md"
 if [[ -f "$GUIDE_MD" ]]; then
   echo "[dashbird] Syncing Daily Summary guide (learned preferences md only)"
   rsync -avz "$GUIDE_MD" "${HOST}:${REMOTE_DIR}/data/gmail-daily-summary-guide.md"
+fi
+
+# Opportunity Watch targets live in gitignored data/ (src/data stub is empty for the public repo).
+JOB_WATCH_TARGETS="$ROOT/data/job-watch-targets.json"
+if [[ -f "$JOB_WATCH_TARGETS" ]]; then
+  echo "[dashbird] Syncing Opportunity Watch targets (data/job-watch-targets.json)"
+  rsync -avz "$JOB_WATCH_TARGETS" "${HOST}:${REMOTE_DIR}/data/job-watch-targets.json"
+  REMOTE_N="$(ssh "$HOST" "python3 -c \"import json; d=json.load(open('${REMOTE_DIR}/data/job-watch-targets.json')); print(len(d.get('targets',[])))\"")"
+  if [[ "${REMOTE_N:-0}" -lt 1 ]]; then
+    echo "[dashbird] ERROR: cloud job-watch-targets.json has no targets after rsync" >&2
+    exit 1
+  fi
+  echo "[dashbird] Verified Opportunity Watch targets on cloud (${REMOTE_N} lanes)"
+else
+  echo "[dashbird] No local data/job-watch-targets.json — leaving cloud Opportunity Watch targets untouched"
 fi
 
 if [[ "$SYNC_ENV" == "1" ]]; then

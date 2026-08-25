@@ -47,6 +47,8 @@ const DEFAULT_STATE = /** @type {JobWatchState} */ ({
 });
 
 let targetsCache = null;
+/** @type {string} */
+let targetsCacheKey = '';
 
 export function jobWatchStatePath(env = process.env) {
   const override = String(env.JOB_WATCH_STATE_PATH || '').trim();
@@ -60,19 +62,24 @@ export function jobWatchStatePath(env = process.env) {
  * @returns {Promise<object>}
  */
 export async function loadJobWatchTargets() {
-  if (targetsCache) return targetsCache;
   for (const filePath of [LIVE_TARGETS_PATH, BUNDLED_TARGETS_PATH]) {
     try {
+      const st = await fs.stat(filePath);
+      const key = `${filePath}:${st.mtimeMs}`;
+      if (targetsCache && targetsCacheKey === key) return targetsCache;
       const raw = await fs.readFile(filePath, 'utf8');
       targetsCache = JSON.parse(raw);
+      targetsCacheKey = key;
       return targetsCache;
     } catch (e) {
       const code = /** @type {NodeJS.ErrnoException} */ (e)?.code;
       if (code !== 'ENOENT') throw e;
     }
   }
+  if (targetsCache && targetsCacheKey === ':bundled') return targetsCache;
   console.warn('[job-watch] targets file missing; using bundled job-watch-targets.json');
   targetsCache = structuredClone(bundledTargets);
+  targetsCacheKey = ':bundled';
   return targetsCache;
 }
 

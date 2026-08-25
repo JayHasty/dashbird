@@ -298,6 +298,45 @@ function isRemoteGeographyLabel(value) {
   return /^(remote|home[-\s]?based)$/i.test(s);
 }
 
+/** Bundled stub company — never show this as a filter chip. */
+function isPlaceholderCompany(label) {
+  return /^example\s*co\.?$/i.test(String(label || '').trim());
+}
+
+/**
+ * Companies checkboxes follow listing rows (watch lanes + candidates),
+ * not the stub source list.
+ * @param {object} data
+ * @returns {Array<{ id: string, label: string }>}
+ */
+function listingCompanies(data) {
+  /** @type {Map<string, { id: string, label: string }>} */
+  const byId = new Map();
+  const add = (id, label) => {
+    const key = String(id || '').trim();
+    if (!key) return;
+    const name = String(label || '').trim() || key;
+    if (isPlaceholderCompany(name)) return;
+    const prev = byId.get(key);
+    if (!prev) byId.set(key, { id: key, label: name });
+    else if (name !== key && prev.label === key) byId.set(key, { id: key, label: name });
+  };
+  for (const t of Array.isArray(data?.targets) ? data.targets : []) {
+    add(t.source || t.sourceId, t.sourceLabel);
+  }
+  for (const c of Array.isArray(data?.candidates) ? data.candidates : []) {
+    add(c.sourceId || c.source, c.sourceLabel);
+  }
+  if (!byId.size) {
+    for (const s of Array.isArray(data?.sources) ? data.sources : []) {
+      add(s.id, s.label);
+    }
+  }
+  return [...byId.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+  );
+}
+
 /**
  * @returns {{
  *   sources: Set<string> | null,
@@ -772,8 +811,7 @@ export function mountJobWatch(root) {
     candList.replaceChildren();
     ensureStaticFilters();
 
-    const sources = Array.isArray(data?.sources) ? data.sources : [];
-    if (sources.length) paintCompanyFilters(sources);
+    paintCompanyFilters(listingCompanies(data));
 
     const when = data?.lastScanAt ? new Date(data.lastScanAt) : null;
     const whenTxt =

@@ -23,6 +23,7 @@ import {
   keepNewestSourceOnly,
   loadGmailWeeklySummary,
   mergeSynthesizedDigest,
+  reconcileDigestClosedTombstones,
   saveGmailWeeklySummary,
   shouldExcludeDailySummaryItem,
 } from './gmail-weekly-summary-store.js';
@@ -33,6 +34,16 @@ const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
 
 /** @type {Promise<object> | null} */
 let synthInflight = null;
+
+/**
+ * Reload persisted digest and reconcile tombstones before writing a scan result.
+ * @param {import('./gmail-weekly-summary-store.js').GmailWeeklyDigest} merged
+ * @param {NodeJS.ProcessEnv} env
+ */
+async function saveScanDigest(merged, env) {
+  const latest = await loadGmailWeeklySummary(env);
+  return saveGmailWeeklySummary(reconcileDigestClosedTombstones(merged, latest), env);
+}
 
 /** @type {ReturnType<typeof setInterval> | null} */
 let dailyTimer = null;
@@ -417,14 +428,14 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
     || reason === 'bootstrap';
 
   synthInflight = (async () => {
-    const prev = await loadGmailWeeklySummary(env);
     const tz = scheduleTz(env);
     const scanYmd = gmailWeeklySummaryLocalParts(new Date(), tz).ymd;
     const guide = await loadGmailDailySummaryGuide(env);
     const mail = await fetchWeeklySummaryMail(env, { forceRefresh: forceMail });
 
     if (!mail.ok && !mail.messages?.length) {
-      const digest = await saveGmailWeeklySummary({
+      const prev = await loadGmailWeeklySummary(env);
+      const digest = await saveScanDigest({
         ...prev,
         lastError: mail.error || (mail.errors || []).join('; ') || 'gmail_fetch_failed',
       }, env);
@@ -434,6 +445,7 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
     const llm = dailySummaryLlmEnabled(env);
 
     if (!mail.messages?.length) {
+      const prev = await loadGmailWeeklySummary(env);
       const merged = mergeSynthesizedDigest(
         prev,
         {
@@ -448,7 +460,7 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
         },
         { guideMarkdown: guide },
       );
-      const digest = await saveGmailWeeklySummary(merged, env);
+      const digest = await saveScanDigest(merged, env);
       return { ok: true, fromCache: false, digest, mailMeta: mail, reason };
     }
 
@@ -464,6 +476,7 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
     const feedbackExamples = Array.isArray(triage.examples) ? triage.examples : [];
 
     if (!digestMessages.length) {
+      const prev = await loadGmailWeeklySummary(env);
       const merged = mergeSynthesizedDigest(
         prev,
         {
@@ -476,7 +489,7 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
         },
         { guideMarkdown: guide },
       );
-      const digest = await saveGmailWeeklySummary(merged, env);
+      const digest = await saveScanDigest(merged, env);
       return {
         ok: true,
         fromCache: false,
@@ -527,6 +540,7 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
 
     // mapSynthItems still applies guide-match / event / OTP hard excludes (authoritative).
     const items = mapSynthItems(parsed, mail.messages, guide);
+    const prev = await loadGmailWeeklySummary(env);
     const merged = mergeSynthesizedDigest(
       prev,
       {
@@ -541,7 +555,7 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
       },
       { guideMarkdown: guide },
     );
-    const digest = await saveGmailWeeklySummary(merged, env);
+    const digest = await saveScanDigest(merged, env);
     return {
       ok: true,
       fromCache: false,

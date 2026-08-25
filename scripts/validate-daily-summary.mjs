@@ -18,6 +18,7 @@ import {
   matchesClosedDailySummaryItem,
   mergeSynthesizedDigest,
   pruneExpiredGmailDailySummary,
+  reconcileDigestClosedTombstones,
   openGmailWeeklyItems,
   scrubEventMentionsFromSummary,
   sortItemsChronological,
@@ -613,5 +614,88 @@ assert.equal(
   prunedNoise.digest.items.find((i) => i.id === 'keep1')?.status,
   'open',
 );
+
+// Dismissed tombstones survive past the rolling window so rescans cannot resurrect them.
+const oldDismissed = baseItem({
+  id: 'old-dismissed',
+  title: 'Confirm Zelle transaction',
+  company: 'USAA',
+  status: 'dismissed',
+  createdAt: old,
+  updatedAt: old,
+  fingerprint: 'zelle-tomb',
+  sources: [
+    {
+      email: 'a@x.com',
+      messageId: '76',
+      threadId: '',
+      subject: 'Zelle payment received',
+      date: old,
+    },
+  ],
+});
+const prunedTomb = pruneExpiredGmailDailySummary(
+  {
+    summaryText: '',
+    generatedAt: old,
+    lastScanYmd: '2026-07-01',
+    windowDays: 10,
+    lastError: null,
+    items: [oldDismissed],
+  },
+  now,
+);
+assert.equal(prunedTomb.digest.items.length, 1);
+assert.equal(prunedTomb.digest.items[0]?.status, 'dismissed');
+
+const resurrectAttempt = mergeSynthesizedDigest(prunedTomb.digest, {
+  items: [
+    {
+      title: 'Review your Zelle transaction',
+      company: 'USAA',
+      detail: '',
+      needsReply: false,
+      deadline: null,
+      deadlineSource: 'none',
+      sources: oldDismissed.sources,
+    },
+  ],
+});
+assert.equal(resurrectAttempt.items.filter((i) => i.status === 'open').length, 0);
+
+// Scan save must not overwrite a dismiss that landed while synthesis was running.
+const staleOpen = baseItem({
+  id: 'race-open',
+  title: 'Pay rent',
+  company: 'Landlord',
+  status: 'open',
+  createdAt: fresh,
+  updatedAt: fresh,
+  fingerprint: 'rent-race',
+  sources: [
+    { email: 'a@x.com', messageId: '99', threadId: '', subject: 'Rent due', date: fresh },
+  ],
+});
+const latestDismissed = { ...staleOpen, status: 'dismissed', updatedAt: fresh, pinned: false };
+const reconciled = reconcileDigestClosedTombstones(
+  {
+    summaryText: '',
+    generatedAt: fresh,
+    lastScanYmd: '2026-08-23',
+    windowDays: 10,
+    lastError: null,
+    items: [staleOpen],
+  },
+  {
+    summaryText: '',
+    generatedAt: fresh,
+    lastScanYmd: '2026-08-23',
+    windowDays: 10,
+    lastError: null,
+    items: [latestDismissed],
+  },
+);
+assert.equal(openGmailWeeklyItems(reconciled).length, 0);
+assert.equal(reconciled.items.find((i) => i.id === 'race-open')?.status, 'dismissed');
 
 console.log('validate-daily-summary: ok');

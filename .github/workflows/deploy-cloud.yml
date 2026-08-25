@@ -73,11 +73,17 @@ jobs:
             --exclude 'public/data/notes.md' \
             --exclude 'public/data/last-backup.txt' \
             --exclude 'public/data/phone-lan-url.txt' \
+            --exclude /deploy/jayhasty-site/ \
             --exclude .github \
             ./ "dashbird-cloud:${REMOTE_DIR}/"
 
           if [[ -f data/gmail-daily-summary-guide.md ]]; then
             rsync -avz data/gmail-daily-summary-guide.md "dashbird-cloud:${REMOTE_DIR}/data/gmail-daily-summary-guide.md"
+          fi
+
+          # gitignored live config — CI usually has no copy; laptop sync-to-cloud.sh is the normal path.
+          if [[ -f data/job-watch-targets.json ]]; then
+            rsync -avz data/job-watch-targets.json "dashbird-cloud:${REMOTE_DIR}/data/job-watch-targets.json"
           fi
 
           if [[ -f public/data/bookmarks-work.json ]]; then
@@ -105,7 +111,27 @@ jobs:
             fi
           fi
 
+          if [[ -f deploy/jayhasty-site/index.html ]]; then
+            echo "Syncing static portfolio (deploy/jayhasty-site)"
+            rsync -avz --delete deploy/jayhasty-site/ "dashbird-cloud:${REMOTE_DIR}/deploy/jayhasty-site/"
+          else
+            echo "No local deploy/jayhasty-site in CI — leaving cloud portfolio files untouched"
+          fi
+          if ! ssh dashbird-cloud "test -s '${REMOTE_DIR}/deploy/jayhasty-site/index.html'"; then
+            echo "ERROR: cloud deploy/jayhasty-site/index.html missing (jayhasty.com would 404)" >&2
+            echo "Publish from portfolio/products/website: npm run build:deploy, then rsync deploy/jayhasty-site" >&2
+            exit 1
+          fi
+
           ssh dashbird-cloud "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' up -d --build --force-recreate dashboard caddy"
+
+          TARGET_N="$(ssh dashbird-cloud "python3 -c \"import json; d=json.load(open('${REMOTE_DIR}/data/job-watch-targets.json')); print(len(d.get('targets',[])))\" 2>/dev/null || echo 0")"
+          if [[ "${TARGET_N:-0}" -lt 1 ]]; then
+            echo "ERROR: cloud data/job-watch-targets.json missing or empty (${TARGET_N} targets)." >&2
+            echo "Opportunity Watch will be blank. From laptop: ./scripts/sync-to-cloud.sh (needs data/job-watch-targets.json)" >&2
+            exit 1
+          fi
+          echo "Opportunity Watch targets on cloud: ${TARGET_N}"
 
           DOMAIN="$(ssh dashbird-cloud "grep -E '^DASHBOARD_DOMAIN=' '${REMOTE_DIR}/.env' 2>/dev/null | cut -d= -f2-" || true)"
           echo "Deployed. Open: https://${DOMAIN:-dashbird.jayhasty.com}"

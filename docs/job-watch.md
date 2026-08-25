@@ -5,9 +5,12 @@
 > Internal identifiers still say `job-watch` (files, CSS classes, `/api/job-watch`). Only the user-facing name changed.
 
 **Strategy source:** portfolio `products/applications/anthropic/STRATEGY.md`  
-**Config:** `src/data/job-watch-targets.json`  
+**Config (live):** `data/job-watch-targets.json` (gitignored — your real watch lanes)  
+**Config (stub):** `src/data/job-watch-targets.json` (empty example in the public repo)  
 **State:** `data/job-watch.json`  
 **API:** `GET/POST /api/job-watch`
+
+Cloud deploy rsyncs **code only** — it does not push `data/` unless you run `./scripts/sync-to-cloud.sh` from a laptop that has `data/job-watch-targets.json`. Without that file on the VPS, Opportunity Watch loads the empty stub and the panel is blank.
 
 ---
 
