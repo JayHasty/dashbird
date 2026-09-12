@@ -380,6 +380,7 @@ export function mountTasks(root, config = {}) {
       const cached = todosCache.get(pid) || [];
       if (!cached.some((it) => it.id === id)) {
         todosCache.set(pid, clonePanelTodos([row, ...cached]));
+        syncProjectOpenCount(pid, todosCache.get(pid).length);
       }
       selectProject(pid);
       requestAnimationFrame(() => {
@@ -394,6 +395,7 @@ export function mountTasks(root, config = {}) {
         todosCache.set(projectId, clonePanelTodos(items));
       }
       renderList();
+      syncOpenCountFromItems();
     }
     highlightTaskFromRandom({ id, projectId: pid ?? projectId });
   }
@@ -461,12 +463,63 @@ export function mountTasks(root, config = {}) {
     if (projectId == null) closeProjectEditMenu();
   }
 
+  function projectIsEmpty(p) {
+    return p != null && Number(p.openCount) === 0;
+  }
+
+  /**
+   * @param {unknown} raw
+   * @returns {number | undefined}
+   */
+  function parseOpenCount(raw) {
+    if (raw == null || raw === '') return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  }
+
   function sortProjectsInPlace() {
-    projects.sort(
-      (a, b) =>
+    projects.sort((a, b) => {
+      const aEmpty = projectIsEmpty(a);
+      const bEmpty = projectIsEmpty(b);
+      if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
+      return (
         (a.position ?? a.id) - (b.position ?? b.id) ||
-        a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }),
-    );
+        a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+      );
+    });
+  }
+
+  /**
+   * @param {number} id
+   * @param {number} count
+   */
+  function syncProjectOpenCount(id, count) {
+    const i = projects.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    const next = Math.max(0, Number(count) || 0);
+    const wasEmpty = projectIsEmpty(projects[i]);
+    if (projects[i].openCount === next) return;
+    projects[i] = { ...projects[i], openCount: next };
+    if (wasEmpty !== projectIsEmpty(projects[i])) sortProjectsInPlace();
+    renderProjects();
+  }
+
+  /**
+   * @param {number} id
+   * @param {number} delta
+   */
+  function bumpProjectOpenCount(id, delta) {
+    const i = projects.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    const cur = Number.isFinite(Number(projects[i].openCount))
+      ? Number(projects[i].openCount)
+      : 0;
+    syncProjectOpenCount(id, cur + delta);
+  }
+
+  function syncOpenCountFromItems() {
+    if (projectId == null) return;
+    syncProjectOpenCount(projectId, items.length);
   }
 
   function clearProjectDropIndicators() {
@@ -565,6 +618,7 @@ export function mountTasks(root, config = {}) {
     if (place === 'after') insertAt += 1;
     next.splice(insertAt, 0, moved);
     projects = next;
+    sortProjectsInPlace();
     renderProjects();
     void persistMovedProject(fromId);
   }
@@ -669,6 +723,7 @@ export function mountTasks(root, config = {}) {
           id: j.project.id,
           title: j.project.title,
           position: Number(j.project.position) || projects[i].position || id,
+          openCount: projects[i].openCount,
         };
       }
       if (projectId === id) detailTitle.textContent = currentProjectTitle();
@@ -775,7 +830,9 @@ export function mountTasks(root, config = {}) {
       id: j.project.id,
       title: j.project.title,
       position: Number(j.project.position) || maxPos + 65536,
+      openCount: 0,
     });
+    sortProjectsInPlace();
     selectProject(j.project.id);
     showStatus('');
   }
@@ -787,6 +844,7 @@ export function mountTasks(root, config = {}) {
   async function moveTask(taskId, targetProjectId) {
     if (targetProjectId === projectId) return;
     const prev = items.slice();
+    const destPrevCount = projects.find((p) => p.id === targetProjectId)?.openCount;
     const moved = prev.find((it) => it.id === taskId);
     items = items.filter((it) => it.id !== taskId);
     clearPending(taskId);
@@ -803,6 +861,12 @@ export function mountTasks(root, config = {}) {
       }
     }
     renderList();
+    syncOpenCountFromItems();
+    if (moved) {
+      const dest = todosCache.get(targetProjectId);
+      if (dest) syncProjectOpenCount(targetProjectId, dest.length);
+      else bumpProjectOpenCount(targetProjectId, 1);
+    }
 
     try {
       const r = await fetch(`/api/vikunja/todos/${encodeURIComponent(taskId)}/move`, {
@@ -818,6 +882,12 @@ export function mountTasks(root, config = {}) {
       if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
       todosCache.delete(targetProjectId);
       renderList();
+      syncOpenCountFromItems();
+      if (Number.isFinite(Number(destPrevCount))) {
+        syncProjectOpenCount(targetProjectId, Number(destPrevCount));
+      } else {
+        bumpProjectOpenCount(targetProjectId, -1);
+      }
       showStatus('Could not move task.', true);
     }
   }
@@ -1147,6 +1217,7 @@ export function mountTasks(root, config = {}) {
       li.dataset.id = String(p.id);
       const selected = p.id === projectId;
       li.classList.toggle('tasks-panel__project-item--active', selected);
+      li.classList.toggle('tasks-panel__project-item--empty', projectIsEmpty(p));
       li.setAttribute('aria-selected', selected ? 'true' : 'false');
       // Only the grip handle is draggable so double-click rename on the name still works.
       li.draggable = false;
@@ -1632,10 +1703,12 @@ export function mountTasks(root, config = {}) {
     if (dropItem(id)) {
       if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
       renderList();
+      syncOpenCountFromItems();
       return;
     }
     if (taskProjectId != null && todosCache.has(taskProjectId)) {
       todosCache.set(taskProjectId, stripTodoId(todosCache.get(taskProjectId), id));
+      syncProjectOpenCount(taskProjectId, todosCache.get(taskProjectId).length);
     }
   }
 
@@ -1699,6 +1772,7 @@ export function mountTasks(root, config = {}) {
       if (removedParentId && removedParentId !== id) dropItem(removedParentId);
       if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
       renderList();
+      syncOpenCountFromItems();
       showStatus('');
     } catch {
       clearPending(id);
@@ -1766,6 +1840,7 @@ export function mountTasks(root, config = {}) {
     todosCache.set(requestFor, clonePanelTodos(items));
     setWritable(true);
     renderList();
+    syncProjectOpenCount(requestFor, items.length);
     showStatus('');
   }
 
@@ -1792,6 +1867,7 @@ export function mountTasks(root, config = {}) {
     });
     todosCache.set(projectId, clonePanelTodos(items));
     renderList();
+    syncOpenCountFromItems();
     showStatus('');
   }
 
@@ -1805,6 +1881,7 @@ export function mountTasks(root, config = {}) {
           id: Number(p.id),
           title: String(p.title || ''),
           position: Number(p.position) || Number(p.id),
+          openCount: parseOpenCount(p.openCount),
         }))
       : [];
     sortProjectsInPlace();
@@ -1996,11 +2073,13 @@ export function mountTasks(root, config = {}) {
           id,
           title: String(p.title || ''),
           position: Number(p.position) || id,
+          openCount: parseOpenCount(p.openCount),
         };
         const existing = byId.get(id);
         if (existing) {
           existing.title = row.title;
           existing.position = row.position;
+          if (row.openCount != null) existing.openCount = row.openCount;
         } else {
           projects.push(row);
         }

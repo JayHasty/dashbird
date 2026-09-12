@@ -17382,6 +17382,10 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   margin: 0;
 }
 
+.tasks-panel__project-item--empty .tasks-panel__project-btn {
+  font-style: italic;
+}
+
 .tasks-panel__project-row {
   display: flex;
   align-items: center;
@@ -18598,6 +18602,10 @@ a.hero-astro-item.hero-astro-item--link:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-tasks__project--empty .mobile-tasks__project-name {
+  font-style: italic;
 }
 
 .mobile-tasks__project-delete {

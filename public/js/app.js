@@ -270,7 +270,7 @@ async function mainMobile() {
 
   const [{ mountViewModeToggle }, { mountMobileShell }] = await Promise.all([
     import('./panels/view-mode-toggle.js'),
-    import('./panels/mobile-shell.js?v=mobile-panels-20260825-big-events-filter-1'),
+    import('./panels/mobile-shell.js?v=mobile-panels-20260912-empty-folder-1'),
   ]);
 
   mountViewModeToggle(document.getElementById('mount-view-mode'));
@@ -397,7 +397,7 @@ async function mainDesktop() {
 
   mountCalendar(document.getElementById('mount-calendar'), config);
 
-  void import('./panels/tasks.js?v=tasks-reorder-1')
+  void import('./panels/tasks.js?v=tasks-empty-folder-1')
     .then(({ mountTasks }) => {
       mountTasks(document.getElementById('mount-tasks'), config);
     })
@@ -424,7 +424,7 @@ async function mainDesktop() {
   void configPromise.then((fresh) => {
     if (!fresh || typeof fresh !== 'object') return;
     if (fresh.vikunjaPublicUrl === config.vikunjaPublicUrl) return;
-    import('./panels/tasks.js?v=tasks-reorder-1')
+    import('./panels/tasks.js?v=tasks-empty-folder-1')
       .then(({ mountTasks }) => {
         mountTasks(document.getElementById('mount-tasks'), fresh);
       })

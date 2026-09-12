@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import express from 'express';
 import {
+  countOpenTopLevelTasksByProject,
   createPanelProject,
   createPanelSubtask,
   createPanelTodo,
@@ -97,13 +98,18 @@ router.get('/health', async (_req, res) => {
 /** Top-level projects for the main Tasks panel. */
 router.get('/projects', async (_req, res) => {
   try {
-    const projects = await listPanelProjects();
+    const [projects, counts] = await Promise.all([
+      listPanelProjects(),
+      countOpenTopLevelTasksByProject().catch(() => null),
+    ]);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({
       ok: true,
       configured: true,
       defaultProjectId: resolveVikunjaConfig().projectId,
-      projects,
+      projects: counts
+        ? projects.map((p) => ({ ...p, openCount: counts.get(p.id) || 0 }))
+        : projects,
     });
   } catch (e) {
     sendErr(e, res);

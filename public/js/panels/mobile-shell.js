@@ -8,7 +8,7 @@ import {
 
 const MOBILE_TAB_KEY = 'dashbirdMobileTab';
 /** Bump when any mobile panel module changes (cache-bust dynamic imports). */
-const MOBILE_PANELS_V = 'mobile-panels-20260910-task-reorder-1';
+const MOBILE_PANELS_V = 'mobile-panels-20260912-empty-folder-1';
 function phoneDeviceBindUrl() {
   let did = '';
   try { did = String(localStorage.getItem('dashbird_did') || '').trim(); } catch { /* ignore */ }

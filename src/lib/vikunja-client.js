@@ -667,6 +667,56 @@ export async function movePanelTodo(id, projectId, env = process.env) {
   };
 }
 
+/**
+ * Count open top-level tasks per project (excludes nested subtasks).
+ * @param {unknown} rows
+ * @returns {Map<number, number>}
+ */
+export function tallyOpenTopLevelTasksByProject(rows) {
+  /** @type {Map<number, number>} */
+  const counts = new Map();
+  if (!Array.isArray(rows)) return counts;
+  for (const row of rows) {
+    if (!row || row.done || vikunjaTaskIsSubtask(row)) continue;
+    const pid = Number(row.project_id);
+    if (!Number.isFinite(pid) || pid <= 0) continue;
+    counts.set(pid, (counts.get(pid) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Open top-level task counts keyed by Vikunja project id.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {Promise<Map<number, number>>}
+ */
+export async function countOpenTopLevelTasksByProject(env = process.env) {
+  const cfg = resolveVikunjaConfig(env);
+  if (!cfg.configured) return new Map();
+
+  /** @type {Map<number, number>} */
+  const counts = new Map();
+  for (let page = 1; page <= PANEL_TODOS_MAX_PAGES; page++) {
+    const qs = new URLSearchParams({
+      per_page: String(PANEL_TODOS_PER_PAGE),
+      page: String(page),
+      filter: 'done = false',
+    });
+    const res = await vikunjaFetch(`tasks?${qs}`, { env });
+    if (!res.ok) {
+      const err = new Error(safeUpstreamMessage(res) || 'vikunja_list_failed');
+      err.code = 'vikunja_upstream';
+      err.status = res.status >= 400 && res.status < 600 ? res.status : 502;
+      throw err;
+    }
+    const rows = Array.isArray(res.json) ? res.json : [];
+    const pageCounts = tallyOpenTopLevelTasksByProject(rows);
+    for (const [pid, n] of pageCounts) counts.set(pid, (counts.get(pid) || 0) + n);
+    if (rows.length < PANEL_TODOS_PER_PAGE) break;
+  }
+  return counts;
+}
+
 /** Vikunja page size for open-task listing. */
 const PANEL_TODOS_PER_PAGE = 100;
 /** Safety stop so a runaway project cannot loop forever (100 × 100 = 10k tasks). */
