@@ -25,7 +25,7 @@ import { fillLinkifiedText } from '../lib/linkify-text.js';
 
 /**
  * Main Tasks panel — browse Vikunja projects, add/complete tasks on Dashbird.
- * Projects list + task detail; rename/add projects; drag tasks onto projects.
+ * Projects list + task detail; rename/add projects; drag to reorder tasks or drop onto projects.
  * @param {HTMLElement} root
  * @param {{ vikunjaPublicUrl?: string, vikunjaConfigured?: boolean }} [config]
  */
@@ -38,7 +38,7 @@ const LONG_PRESS_MOVE_PX = 10;
 
 /**
  * @param {unknown} it
- * @returns {{ id: string, text: string, done: boolean, subtasks: Array<{ id: string, text: string, done: boolean }> } | null}
+ * @returns {{ id: string, text: string, done: boolean, position: number, subtasks: Array<{ id: string, text: string, done: boolean }> } | null}
  */
 function parsePanelTodo(it) {
   if (!it || typeof it !== 'object') return null;
@@ -56,17 +56,24 @@ function parsePanelTodo(it) {
         })
         .filter(Boolean)
     : [];
-  return { id, text, done: Boolean(it.done), subtasks };
+  return {
+    id,
+    text,
+    done: Boolean(it.done),
+    position: Number.isFinite(Number(it.position)) ? Number(it.position) : 0,
+    subtasks,
+  };
 }
 
 /**
- * @param {Array<{ id: string, text: string, done: boolean, subtasks?: Array<{ id: string, text: string, done: boolean }> }>} list
+ * @param {Array<{ id: string, text: string, done: boolean, position?: number, subtasks?: Array<{ id: string, text: string, done: boolean }> }>} list
  */
 function clonePanelTodos(list) {
   return list.map((it) => ({
     id: it.id,
     text: it.text,
     done: Boolean(it.done),
+    position: Number(it.position) || 0,
     subtasks: Array.isArray(it.subtasks) ? it.subtasks.map((s) => ({ ...s })) : [],
   }));
 }
@@ -300,9 +307,9 @@ export function mountTasks(root, config = {}) {
 
   /** @type {Array<{ id: number, title: string, position?: number }>} */
   let projects = [];
-  /** @type {Array<{ id: string, text: string, done: boolean, subtasks: Array<{ id: string, text: string, done: boolean }> }>} */
+  /** @type {Array<{ id: string, text: string, done: boolean, position?: number, subtasks: Array<{ id: string, text: string, done: boolean }> }>} */
   let items = [];
-  /** @type {Map<number, Array<{ id: string, text: string, done: boolean, subtasks: Array<{ id: string, text: string, done: boolean }> }>>} */
+  /** @type {Map<number, Array<{ id: string, text: string, done: boolean, position?: number, subtasks: Array<{ id: string, text: string, done: boolean }> }>>} */
   const todosCache = new Map();
   /** @type {number | null} */
   let projectId = null;
@@ -314,6 +321,8 @@ export function mountTasks(root, config = {}) {
   /** @type {number | null} */
   let draggingProjectId = null;
   let projectDragMoved = false;
+  /** @type {string | null} */
+  let draggingTaskId = null;
 
   /** @type {Map<string, ReturnType<typeof setTimeout>>} */
   const pendingDone = new Map();
@@ -474,6 +483,19 @@ export function mountTasks(root, config = {}) {
       });
   }
 
+  function clearTaskDropIndicators() {
+    list
+      .querySelectorAll(
+        '.tasks-panel__item--reorder-before, .tasks-panel__item--reorder-after',
+      )
+      .forEach((el) => {
+        el.classList.remove(
+          'tasks-panel__item--reorder-before',
+          'tasks-panel__item--reorder-after',
+        );
+      });
+  }
+
   /**
    * Midpoint position between neighbors (avoids rewriting every project).
    * @param {number | null | undefined} before
@@ -545,6 +567,45 @@ export function mountTasks(root, config = {}) {
     projects = next;
     renderProjects();
     void persistMovedProject(fromId);
+  }
+
+  /**
+   * @param {string} [_movedId]
+   */
+  async function persistMovedTask(_movedId) {
+    if (projectId == null) return;
+    try {
+      const r = await fetch('/api/vikunja/todos/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, ids: items.map((it) => it.id) }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    } catch {
+      showStatus('Could not save task order.', true);
+    }
+  }
+
+  /**
+   * @param {string} fromId
+   * @param {string} toId
+   * @param {'before' | 'after'} place
+   */
+  function reorderTaskLocal(fromId, toId, place) {
+    if (!fromId || fromId === toId) return;
+    const fromIdx = items.findIndex((it) => it.id === fromId);
+    const toIdx = items.findIndex((it) => it.id === toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = items.slice();
+    const [moved] = next.splice(fromIdx, 1);
+    let insertAt = next.findIndex((it) => it.id === toId);
+    if (insertAt < 0) return;
+    if (place === 'after') insertAt += 1;
+    next.splice(insertAt, 0, moved);
+    items = next;
+    if (projectId != null) todosCache.set(projectId, clonePanelTodos(items));
+    renderList();
+    void persistMovedTask(fromId);
   }
 
   /**
@@ -1099,6 +1160,7 @@ export function mountTasks(root, config = {}) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         clearProjectDropIndicators();
+        clearTaskDropIndicators();
 
         if (isProject || (draggingProjectId != null && !isTask)) {
           if (draggingProjectId === p.id) return;
@@ -1352,7 +1414,8 @@ export function mountTasks(root, config = {}) {
     } else {
       li.classList.toggle('tasks-panel__item--done', done);
       li.classList.toggle('tasks-panel__item--pending-hide', pendingDone.has(id));
-      li.draggable = !done && !pendingDone.has(id);
+      const handle = li.querySelector('.tasks-panel__drag');
+      if (handle instanceof HTMLElement) handle.draggable = !done && !pendingDone.has(id);
     }
     const cb = li.querySelector('.tasks-panel__check');
     if (cb instanceof HTMLInputElement) cb.checked = done;
@@ -1412,7 +1475,7 @@ export function mountTasks(root, config = {}) {
     const li = document.createElement('li');
     li.className = 'tasks-panel__item';
     li.dataset.id = item.id;
-    li.draggable = !item.done && !pendingDone.has(item.id);
+    li.draggable = false;
     if (item.done) li.classList.add('tasks-panel__item--done');
     if (pendingDone.has(item.id)) li.classList.add('tasks-panel__item--pending-hide');
 
@@ -1422,7 +1485,8 @@ export function mountTasks(root, config = {}) {
     const handle = document.createElement('span');
     handle.className = 'tasks-panel__drag';
     handle.setAttribute('aria-hidden', 'true');
-    handle.title = 'Drag to another project · double-click task text to edit';
+    handle.title = 'Drag to reorder · drop on a project to move · double-click task text to edit';
+    handle.draggable = !item.done && !pendingDone.has(item.id);
     const grip = document.createElement('span');
     grip.className = 'tasks-panel__grip';
     handle.append(grip);
@@ -1481,25 +1545,54 @@ export function mountTasks(root, config = {}) {
       });
     }
 
-    li.addEventListener('dragstart', (e) => {
+    li.addEventListener('dragover', (e) => {
+      if (item.done || pendingDone.has(item.id)) return;
+      const types = [...e.dataTransfer.types];
+      const isTask = types.includes(DND_TASK_MIME) || draggingTaskId != null;
+      if (!isTask) return;
+      if (draggingTaskId === item.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      clearTaskDropIndicators();
+      const rect = li.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      li.classList.add(
+        before ? 'tasks-panel__item--reorder-before' : 'tasks-panel__item--reorder-after',
+      );
+    });
+    li.addEventListener('drop', (e) => {
+      const types = [...e.dataTransfer.types];
+      const isTask = types.includes(DND_TASK_MIME) || Boolean(e.dataTransfer.getData(DND_TASK_MIME));
+      if (!isTask && !e.dataTransfer.getData('text/plain')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const taskRaw = e.dataTransfer.getData(DND_TASK_MIME);
+      const plain = e.dataTransfer.getData('text/plain');
+      const fromId = String(taskRaw || (plain && !plain.startsWith('project:') ? plain : '') || '').trim();
+      clearTaskDropIndicators();
+      if (!/^\d+$/.test(fromId) || fromId === item.id) return;
+      const rect = li.getBoundingClientRect();
+      const place = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+      reorderTaskLocal(fromId, item.id, place);
+    });
+
+    handle.addEventListener('dragstart', (e) => {
       if (item.done || pendingDone.has(item.id)) {
         e.preventDefault();
         return;
       }
-      if (e.target instanceof Element && e.target.closest('.tasks-panel__subtasks')) {
-        e.preventDefault();
-        return;
-      }
+      draggingTaskId = item.id;
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData(DND_TASK_MIME, item.id);
       e.dataTransfer.setData('text/plain', item.id);
       li.classList.add('tasks-panel__item--dragging');
     });
-    li.addEventListener('dragend', () => {
+    handle.addEventListener('dragend', () => {
+      draggingTaskId = null;
       li.classList.remove('tasks-panel__item--dragging');
-      projectsList
-        .querySelectorAll('.tasks-panel__project-item--drop')
-        .forEach((el) => el.classList.remove('tasks-panel__project-item--drop'));
+      clearTaskDropIndicators();
+      clearProjectDropIndicators();
     });
 
     return li;
@@ -1694,6 +1787,7 @@ export function mountTasks(root, config = {}) {
       id: String(j.item.id),
       text: String(j.item.text).trim(),
       done: false,
+      position: Number.isFinite(Number(j.item.position)) ? Number(j.item.position) : 0,
       subtasks: [],
     });
     todosCache.set(projectId, clonePanelTodos(items));

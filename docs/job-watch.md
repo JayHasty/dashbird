@@ -88,11 +88,13 @@ On every Dashbird page load, Opportunity Watch **resets Region to Bay Area + NYC
 ## Row contents
 
 Every row shows priority tier, posted / not posted, and opportunity **type**. Open rows add the
-**amount** and location, and the title links to the posting.
+**amount** and location, and the **posted job title** (not the watch-lane nickname) links to the
+posting. Closed rows keep the lane label. Hover an open title to see which lane matched.
 
 | Field | Source |
 |-------|--------|
-| Type | Title/body keywords → `Full-time`, `Contract`, `Fellowship`, `Internship`, `Residency`, `Grant`, `Fixed-term`, `Part-time`. Closed rows fall back to the target's `kind` in the config. |
+| Title | Open: Greenhouse / Ashby / Google posting title. Closed: watch-lane `label`. |
+| Type | Title/body keywords → `Full-time`, `Contract`, `Fellowship`, `Internship`, `Residency`, `Grant`, `Fixed-term`, `Part-time`. Closed rows fall back to the target's `kind` in the config. Incidental JD phrases like “grant funding” do **not** make a hired role a Grant. |
 | Amount | Parsed from the posting body (`Annual Salary: $215,000 — $300,000 USD`), shown compact as `$215K–$300K`. Hourly pay renders as `$85/hr`. |
 
 **Pay floor:** **$180,000/year** (`compFloorAnnualUsd` in the targets file). If a USD posting’s published max (hourly × 2080 if needed) is below that, `assessJob` returns `pass` — the row can still show as a watched target, but it is not apply-now and will not yellow-dot. Unknown / non-USD pay is not auto-failed.

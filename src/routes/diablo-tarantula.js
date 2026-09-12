@@ -58,7 +58,7 @@ router.get('/', async (req, res) => {
     const region = typeof cfg.regionLabel === 'string' && cfg.regionLabel.trim() !== '' ? cfg.regionLabel.trim() : 'Mount Diablo area';
     const rec = cfg.recurrence;
     const windowHuman = `Sep ${rec.startDay}–Oct ${rec.endDay}`;
-    const detailLine = `${region}: male tarantulas often wander trails and roads during mating season (${windowHuman}; static calendar). Look from a distance—do not handle wildlife.`;
+    const detailLine = `${region}: male tarantulas often wander trails and roads during mating season (${windowHuman}).`;
 
     const ref =
       typeof cfg.referenceUrl === 'string' && /^https?:\/\//i.test(cfg.referenceUrl.trim())

@@ -30,6 +30,7 @@ const PKG_ROOT = path.join(fileURLToPath(new URL('.', import.meta.url)), '..', '
  *   dates: string[],
  *   earliestLocalTime: string | null,
  *   attendance: EventsAttendanceMode,
+ *   showBigEvents: boolean,
  * }} EventsFinderFilters */
 
 /** @typedef {{
@@ -59,6 +60,8 @@ const DEFAULT_FILTERS = /** @type {EventsFinderFilters} */ ({
   earliestLocalTime: null,
   // Include online sources (e.g. Multiverse School) unless the user unchecks Online.
   attendance: 'any',
+  // Pin producer / festival cards (Burning Man, Climate Week, …) above the catalog.
+  showBigEvents: true,
 });
 
 /** Defaults for Apify search budget (queries × events / query). */
@@ -183,6 +186,18 @@ function normalizeAttendance(raw) {
 }
 
 /**
+ * @param {unknown} raw
+ * @param {boolean} fallback
+ * @returns {boolean}
+ */
+function normalizeBool(raw, fallback) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  if (raw === true || raw === 1 || raw === '1' || raw === 'true') return true;
+  if (raw === false || raw === 0 || raw === '0' || raw === 'false') return false;
+  return fallback;
+}
+
+/**
  * One idea per line; trim, drop blanks/dupes, sort A→Z (case-insensitive).
  * @param {string} raw
  * @returns {string}
@@ -280,6 +295,10 @@ function normalizeFilters(raw) {
       src.attendance === undefined
         ? DEFAULT_FILTERS.attendance
         : normalizeAttendance(src.attendance),
+    showBigEvents:
+      src.showBigEvents === undefined
+        ? DEFAULT_FILTERS.showBigEvents
+        : normalizeBool(src.showBigEvents, DEFAULT_FILTERS.showBigEvents),
   };
 }
 

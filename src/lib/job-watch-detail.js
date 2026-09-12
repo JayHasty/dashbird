@@ -9,12 +9,17 @@ import { assertPublicHttpUrl } from './public-http-url.js';
 
 const UA = 'dashbird-opportunity-watch/1.0 (+local; Anthropic careers watch)';
 
+/**
+ * Bump when type / pay / work-mode parsers change so cached `state.details` refetch.
+ * v2: workMode + locations. v3: grant type no longer matches incidental JD text.
+ */
+export const OPPORTUNITY_DETAIL_VERSION = 3;
+
 /** Employment types we can tell apart from a title or posting body. */
 const TITLE_TYPES = [
   [/\bintern(ship)?s?\b/i, 'Internship'],
   [/\bfellow(ship)?s?\b/i, 'Fellowship'],
   [/\bresidency\b/i, 'Residency'],
-  [/\bgrants?\b/i, 'Grant'],
   [/\bcontract(or)?s?\b/i, 'Contract'],
   [/\bpart[-\s]time\b/i, 'Part-time'],
   [/\b(temporary|fixed[-\s]term)\b/i, 'Fixed-term'],
@@ -24,8 +29,44 @@ const BODY_TYPES = [
   [/\bthis is a (?:\d+[-\s]month\s+)?(?:contract|contractor) (?:role|position|engagement)\b/i, 'Contract'],
   [/\bfixed[-\s]term (?:contract|role|position|appointment)\b/i, 'Fixed-term'],
   [/\bthis is a part[-\s]time (?:role|position)\b/i, 'Part-time'],
-  [/\bgrant (?:program|opportunity|application|funding)\b/i, 'Grant'],
 ];
+
+/**
+ * Hired-role titles that work *on* grants (Grant Writer, Grants Officer, …)
+ * are jobs, not grant offerings.
+ */
+const HIRED_ROLE_TITLE =
+  /\b(manager|director|engineer|architect|officer|specialist|writer|analyst|lead|coordinator|associate|administrator|scientist|researcher|developer|designer|counsel|advisor|consultant|recruiter|accountant|president|head of|vp)\b/i;
+
+/**
+ * True when the posting itself is a grant (RFP / award), not a job whose JD
+ * mentions grant funding as customer context.
+ * @param {string} title
+ * @returns {boolean}
+ */
+export function titleLooksLikeGrant(title) {
+  const t = String(title || '').trim();
+  if (!/\bgrants?\b/i.test(t)) return false;
+  if (HIRED_ROLE_TITLE.test(t)) return false;
+  return (
+    /\bgrants?\s+(?:program|round|award|opportunity|competition|rfp|call)\b/i.test(t)
+    || /\b(?:call for|open call for)\s+grants?\b/i.test(t)
+    || /\bgrants?\s*$/i.test(t)
+  );
+}
+
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
+function bodyLooksLikeGrantVehicle(text) {
+  const body = String(text || '');
+  return (
+    /\bthis is a (?:grant|funded grant) (?:program|opportunity|award)\b/i.test(body)
+    || /\b(?:apply|applications?) (?:now )?for this grant\b/i.test(body)
+    || /\bwe (?:are|will be) awarding grants?\b/i.test(body)
+  );
+}
 
 /**
  * @param {string} raw
@@ -144,14 +185,32 @@ export function parseCompensation(text) {
  * @returns {string}
  */
 export function parseOpportunityType(title, text, compensation = null) {
+  const t = String(title || '');
   for (const [re, label] of TITLE_TYPES) {
-    if (re.test(String(title || ''))) return label;
+    if (re.test(t)) return label;
   }
+  if (titleLooksLikeGrant(t)) return 'Grant';
   for (const [re, label] of BODY_TYPES) {
     if (re.test(String(text || ''))) return label;
   }
+  if (bodyLooksLikeGrantVehicle(text)) return 'Grant';
   if (compensation?.period === 'hour') return 'Contract';
   return 'Full-time';
+}
+
+/**
+ * Stored snapshots used to label hired roles as Grant when the JD mentioned
+ * “grant funding”. Until those rows refetch, refuse Grant unless the title
+ * itself is a grant offering.
+ * @param {string | null | undefined} type
+ * @param {string} title
+ * @returns {string | null}
+ */
+export function coerceOpportunityType(type, title) {
+  const t = String(type || '').trim();
+  if (!t) return null;
+  if (t === 'Grant' && !titleLooksLikeGrant(title)) return 'Full-time';
+  return t;
 }
 
 /**

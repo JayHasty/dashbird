@@ -59,6 +59,12 @@
           if (localStorage.getItem('dashbird-sky-sidebar-hidden') === '1') {
             document.documentElement.classList.add('sky-sidebar-hidden');
           }
+          if (localStorage.getItem('dashbird-tasks-pane-collapsed') === '1') {
+            document.documentElement.classList.add('tasks-keep-tasks-collapsed');
+          }
+          if (localStorage.getItem('dashbird-notes-pane-collapsed') === '1') {
+            document.documentElement.classList.add('tasks-keep-notes-collapsed');
+          }
           var ua = String(navigator.userAgent || '');
           var phone = /Android|iPhone|iPod|iPad|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
           if (!phone && window.matchMedia) {
@@ -79,8 +85,8 @@
           if (view === 'mobile') {
             document.documentElement.classList.add('dashbird-view-mobile');
             var mobileModulePreloads = [
-              '/js/panels/events-filter-ui.js?v=events-filter-ui-20260805-1',
-              '/js/panels/events-finder-mobile.js?v=mobile-panels-20260809-did-heal-1',
+              '/js/panels/events-filter-ui.js?v=big-events-filter-1',
+              '/js/panels/events-finder-mobile.js?v=mobile-panels-20260825-big-events-filter-1',
             ];
             for (var mi = 0; mi < mobileModulePreloads.length; mi++) {
               var mpl = document.createElement('link');
@@ -119,7 +125,7 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=notes-pane-hidden-20260811" />
+    <link rel="stylesheet" href="/styles.css?v=tasks-keep-collapse-20260910" />
     <!-- Instant search: no modules — Enter opens a new tab before app.js loads. -->
     <script>
       window.__dashbirdSearch = (function () {
@@ -556,11 +562,91 @@
           <div class="row row--stack">
             <div class="row row--tasks-keep">
               <section class="panel panel--glass panel--tasks" aria-labelledby="h-tasks">
-                <h2 id="h-tasks">Tasks</h2>
+                <div class="tasks-keep-pane__head">
+                  <button
+                    type="button"
+                    class="tasks-keep-pane__toggle"
+                    id="tasks-keep-collapse-tasks"
+                    aria-label="Collapse Tasks"
+                    title="Collapse Tasks"
+                    aria-expanded="true"
+                    aria-controls="mount-tasks"
+                  >
+                    <svg class="tasks-keep-pane__icon tasks-keep-pane__icon--collapse" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.75"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M10.5 3.5L6 8l4.5 4.5"
+                      />
+                    </svg>
+                    <svg class="tasks-keep-pane__icon tasks-keep-pane__icon--expand" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M4 2.75h8a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8.5a1 1 0 0 1 1-1z"
+                      />
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5.35 6.15l1.05 1.1 2.05-2.2M5.35 10.15l1.05 1.1 2.05-2.2M10.15 6.7h1.5M10.15 10.7h1.5"
+                      />
+                    </svg>
+                  </button>
+                  <h2 id="h-tasks">Tasks</h2>
+                </div>
                 <div id="mount-tasks" class="panel__body tasks-body"></div>
               </section>
               <section class="panel panel--glass panel--keep-notes" aria-labelledby="h-keep-notes">
-                <h2 id="h-keep-notes">Notes</h2>
+                <div class="tasks-keep-pane__head">
+                  <h2 id="h-keep-notes">Notes</h2>
+                  <button
+                    type="button"
+                    class="tasks-keep-pane__toggle"
+                    id="tasks-keep-collapse-notes"
+                    aria-label="Collapse Notes"
+                    title="Collapse Notes"
+                    aria-expanded="true"
+                    aria-controls="mount-keep-notes"
+                  >
+                    <svg class="tasks-keep-pane__icon tasks-keep-pane__icon--collapse" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.75"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5.5 3.5L10 8 5.5 12.5"
+                      />
+                    </svg>
+                    <svg class="tasks-keep-pane__icon tasks-keep-pane__icon--expand" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5.25 2.85v1.7M8 2.85v1.7M10.75 2.85v1.7M3.75 4.35h8.5v9.15H3.75z"
+                      />
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5.75 7.35h4.5M5.75 9.5h4.5M5.75 11.65h3"
+                      />
+                    </svg>
+                  </button>
+                </div>
                 <div id="mount-keep-notes" class="panel__body keep-notes-body"></div>
               </section>
             </div>
@@ -777,6 +863,6 @@
       </section>
     </div>
     </div>
-    <script type="module" src="/js/app.js?v=phone-did-heal-20260809"></script>
+    <script type="module" src="/js/app.js?v=tasks-keep-collapse-20260910"></script>
   </body>
 </html>

@@ -60,6 +60,16 @@ export function mountKeepNotes(root) {
     '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
   const BULLETS_ICON =
     '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="5" cy="6" r="1.6" fill="currentColor"/><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="5" cy="18" r="1.6" fill="currentColor"/><path fill="currentColor" d="M10 5h10v2H10zm0 6h10v2H10zm0 6h10v2H10z"/></svg>';
+  const ARCHIVE_ICON_14 =
+    '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M20.54 5.23 19.15 3.55C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5 6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>';
+  const ARCHIVE_ICON_18 =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M20.54 5.23 19.15 3.55C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5 6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>';
+  const TRASH_ICON_14 =
+    '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+  const TRASH_ICON_18 =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+  const RESTORE_ICON_16 =
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M20.54 5.23 19.15 3.55C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 9.5l5.5 5.5H14v2h-4v-2H6.5L12 9.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>';
 
   /** Keep Takeout / import format for checklist lines in note body. */
   const CHECK_OPEN = '\u2610';
@@ -384,17 +394,24 @@ export function mountKeepNotes(root) {
   archiveSelectedBtn.className = 'keep-notes__btn keep-notes__btn--ghost';
   archiveSelectedBtn.textContent = 'Archive';
 
+  const unarchiveSelectedBtn = document.createElement('button');
+  unarchiveSelectedBtn.type = 'button';
+  unarchiveSelectedBtn.className = 'keep-notes__btn keep-notes__btn--ghost';
+  unarchiveSelectedBtn.textContent = 'Unarchive';
+  unarchiveSelectedBtn.hidden = true;
+
   const deleteSelectedBtn = document.createElement('button');
   deleteSelectedBtn.type = 'button';
   deleteSelectedBtn.className = 'keep-notes__btn keep-notes__btn--danger-text';
   deleteSelectedBtn.textContent = 'Delete';
+  deleteSelectedBtn.hidden = true;
 
   const cancelSelectBtn = document.createElement('button');
   cancelSelectBtn.type = 'button';
   cancelSelectBtn.className = 'keep-notes__btn keep-notes__btn--ghost';
   cancelSelectBtn.textContent = 'Cancel';
 
-  selectBar.append(selectCount, archiveSelectedBtn, deleteSelectedBtn, cancelSelectBtn);
+  selectBar.append(selectCount, archiveSelectedBtn, unarchiveSelectedBtn, deleteSelectedBtn, cancelSelectBtn);
 
   const status = document.createElement('p');
   status.className = 'keep-notes__status';
@@ -507,7 +524,13 @@ export function mountKeepNotes(root) {
     none.value = '__none__';
     none.textContent = 'No collection';
     collectionFilterSelect.appendChild(none);
-    if (prev === '__none__') {
+    const archived = document.createElement('option');
+    archived.value = '__archived__';
+    archived.textContent = 'Archived';
+    collectionFilterSelect.appendChild(archived);
+    if (prev === '__archived__') {
+      collectionFilterSelect.value = '__archived__';
+    } else if (prev === '__none__') {
       collectionFilterSelect.value = '__none__';
     } else if (prev) {
       const match = categories.find((t) => t.toLowerCase() === prev.toLowerCase());
@@ -519,10 +542,18 @@ export function mountKeepNotes(root) {
   }
 
   /**
+   * @returns {boolean}
+   */
+  function viewingArchived() {
+    return collectionFilter === '__archived__';
+  }
+
+  /**
    * @param {object} note
    * @returns {boolean}
    */
   function noteMatchesCollectionFilter(note) {
+    if (viewingArchived()) return true;
     if (!collectionFilter) return true;
     const cat = String(note.category || '').trim();
     if (collectionFilter === '__none__') return !cat;
@@ -530,8 +561,11 @@ export function mountKeepNotes(root) {
   }
 
   collectionFilterSelect.addEventListener('change', () => {
-    collectionFilter = collectionFilterSelect.value;
-    renderNotes();
+    const next = collectionFilterSelect.value;
+    const wasArchived = collectionFilter === '__archived__';
+    collectionFilter = next;
+    if (wasArchived !== (next === '__archived__')) void loadNotes();
+    else renderNotes();
   });
 
   /**
@@ -650,7 +684,7 @@ export function mountKeepNotes(root) {
 
   function syncCardDraggables() {
     root.querySelectorAll('.keep-notes__card-drag').forEach((handle) => {
-      handle.draggable = !selectMode;
+      handle.draggable = !selectMode && !viewingArchived();
     });
   }
 
@@ -672,7 +706,12 @@ export function mountKeepNotes(root) {
     selectBar.hidden = !selectMode;
     root.classList.toggle('keep-notes--select-mode', selectMode);
     selectCount.textContent = n === 1 ? '1 selected' : `${n} selected`;
+    const archivedView = viewingArchived();
+    archiveSelectedBtn.hidden = archivedView;
+    unarchiveSelectedBtn.hidden = !archivedView;
+    deleteSelectedBtn.hidden = !archivedView;
     archiveSelectedBtn.disabled = n === 0;
+    unarchiveSelectedBtn.disabled = n === 0;
     deleteSelectedBtn.disabled = n === 0;
     syncCardDraggables();
   }
@@ -713,6 +752,7 @@ export function mountKeepNotes(root) {
       if (!window.confirm(label)) return;
     }
     archiveSelectedBtn.disabled = true;
+    unarchiveSelectedBtn.disabled = true;
     deleteSelectedBtn.disabled = true;
     try {
       const r = await fetch('/api/keep-notes/bulk', {
@@ -731,7 +771,12 @@ export function mountKeepNotes(root) {
       exitSelectMode();
       renderNotes();
       const n = affected.size;
-      showStatus(action === 'delete' ? `Deleted ${n} note${n === 1 ? '' : 's'}` : `Archived ${n} note${n === 1 ? '' : 's'}`);
+      const labels = {
+        delete: `Deleted ${n} note${n === 1 ? '' : 's'}`,
+        archive: `Archived ${n} note${n === 1 ? '' : 's'}`,
+        unarchive: `Unarchived ${n} note${n === 1 ? '' : 's'}`,
+      };
+      showStatus(labels[action] || `Updated ${n} note${n === 1 ? '' : 's'}`);
     } catch (e) {
       showStatus(String(e?.message || e), true);
     } finally {
@@ -741,6 +786,7 @@ export function mountKeepNotes(root) {
 
   cancelSelectBtn.addEventListener('click', () => exitSelectMode());
   archiveSelectedBtn.addEventListener('click', () => void bulkAction('archive'));
+  unarchiveSelectedBtn.addEventListener('click', () => void bulkAction('unarchive'));
   deleteSelectedBtn.addEventListener('click', () => void bulkAction('delete'));
 
   /**
@@ -885,8 +931,34 @@ export function mountKeepNotes(root) {
       catEl.hidden = !category;
     }
     if (pinBtn) {
-      pinBtn.setAttribute('aria-pressed', note.pinned ? 'true' : 'false');
-      pinBtn.title = note.pinned ? 'Unpin' : 'Pin';
+      if (note.archived) {
+        pinBtn.innerHTML = RESTORE_ICON_16;
+        pinBtn.title = 'Unarchive';
+        pinBtn.setAttribute('aria-label', 'Unarchive note');
+        pinBtn.setAttribute('aria-pressed', 'false');
+      } else {
+        pinBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H8c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1.03-1 1.03 1v-7H19v-2c-1.66 0-3-1.34-3-3z"/></svg>';
+        pinBtn.setAttribute('aria-pressed', note.pinned ? 'true' : 'false');
+        pinBtn.title = note.pinned ? 'Unpin' : 'Pin';
+        pinBtn.setAttribute('aria-label', note.pinned ? 'Unpin' : 'Pin');
+      }
+    }
+    const delBtn = card.querySelector('.keep-notes__card-del');
+    if (delBtn) {
+      if (note.archived) {
+        delBtn.innerHTML = TRASH_ICON_14;
+        delBtn.title = 'Delete forever';
+        delBtn.setAttribute('aria-label', 'Delete note permanently');
+        delBtn.classList.remove('keep-notes__card-del--archive');
+        delBtn.classList.add('keep-notes__card-del--trash');
+      } else {
+        delBtn.innerHTML = ARCHIVE_ICON_14;
+        delBtn.title = 'Archive';
+        delBtn.setAttribute('aria-label', 'Archive note');
+        delBtn.classList.add('keep-notes__card-del--archive');
+        delBtn.classList.remove('keep-notes__card-del--trash');
+      }
     }
     if (mediaEl) {
       mediaEl.replaceChildren();
@@ -906,6 +978,7 @@ export function mountKeepNotes(root) {
           audio.className = 'keep-notes__card-audio';
           audio.controls = true;
           audio.preload = 'none';
+          audio.setAttribute('playsinline', '');
           audio.src = attachmentUrl(note);
           item.append(audio);
         }
@@ -956,18 +1029,18 @@ export function mountKeepNotes(root) {
 
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
-    delBtn.className = 'keep-notes__card-del';
-    delBtn.title = 'Delete note';
-    delBtn.setAttribute('aria-label', 'Delete note');
-    delBtn.innerHTML =
-      '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"/></svg>';
+    delBtn.className = 'keep-notes__card-del keep-notes__card-del--archive';
+    delBtn.title = 'Archive';
+    delBtn.setAttribute('aria-label', 'Archive note');
+    delBtn.innerHTML = ARCHIVE_ICON_14;
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (cardClickTimer) {
         clearTimeout(cardClickTimer);
         cardClickTimer = null;
       }
-      beginPendingDelete(card.dataset.id);
+      if (viewingArchived()) beginPendingDelete(card.dataset.id);
+      else void archiveNoteById(card.dataset.id);
     });
 
     const titleEl = document.createElement('h4');
@@ -997,7 +1070,7 @@ export function mountKeepNotes(root) {
     card.append(checkEl, dragHandle, pinBtn, moreBtn, delBtn, titleEl, bodyEl, mediaEl, catEl);
 
     dragHandle.addEventListener('dragstart', (e) => {
-      if (selectMode) {
+      if (selectMode || viewingArchived()) {
         e.preventDefault();
         return;
       }
@@ -1022,7 +1095,8 @@ export function mountKeepNotes(root) {
 
     pinBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      void togglePin(card.dataset.id);
+      if (viewingArchived()) void unarchiveNoteById(card.dataset.id);
+      else void togglePin(card.dataset.id);
     });
     card.addEventListener('click', () => {
       const id = card.dataset.id;
@@ -1067,10 +1141,13 @@ export function mountKeepNotes(root) {
     pinnedSection.hidden = pinned.length === 0;
     empty.hidden = visible.length > 0;
     if (!notes.length) {
-      empty.textContent = 'No notes yet — jot something above.';
+      empty.textContent = viewingArchived()
+        ? 'No archived notes.'
+        : 'No notes yet — jot something above.';
     } else if (!visible.length) {
       empty.textContent = 'No notes in this collection.';
     }
+    root.classList.toggle('keep-notes--archived-view', viewingArchived());
 
     for (const note of pinned) {
       const card = createCard();
@@ -1177,7 +1254,8 @@ export function mountKeepNotes(root) {
   async function loadNotes() {
     try {
       await loadCategories();
-      const r = await fetch('/api/keep-notes', { cache: 'no-store' });
+      const qs = viewingArchived() ? '?archived=1' : '';
+      const r = await fetch(`/api/keep-notes${qs}`, { cache: 'no-store' });
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'load failed');
       notes = Array.isArray(data.notes) ? data.notes : [];
@@ -1533,11 +1611,10 @@ export function mountKeepNotes(root) {
 
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
-  deleteBtn.className = 'keep-notes__btn keep-notes__btn--icon keep-notes__btn--danger';
-  deleteBtn.title = 'Delete';
-  deleteBtn.setAttribute('aria-label', 'Delete note');
-  deleteBtn.innerHTML =
-    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+  deleteBtn.className = 'keep-notes__btn keep-notes__btn--icon';
+  deleteBtn.title = 'Archive';
+  deleteBtn.setAttribute('aria-label', 'Archive note');
+  deleteBtn.innerHTML = ARCHIVE_ICON_18;
 
   const sendEditorBtn = document.createElement('button');
   sendEditorBtn.type = 'button';
@@ -1561,7 +1638,7 @@ export function mountKeepNotes(root) {
     deleteBtn,
     closeEditorBtn,
   );
-  editor.append(editorTitle, editorBody, editorCatRow, editorMedia, editorToolbar);
+  editor.append(editorTitle, editorMedia, editorBody, editorCatRow, editorToolbar);
   overlay.append(editor);
   document.body.append(overlay);
   document.body.append(imageInput);
@@ -1571,6 +1648,9 @@ export function mountKeepNotes(root) {
     handleChecklistKeydown(e, editorBody);
     handleBulletKeydown(e, editorBody);
   });
+  editorTitle.addEventListener('input', queueEditorAutosave);
+  editorBody.addEventListener('input', queueEditorAutosave);
+  editorCatSelect.addEventListener('change', queueEditorAutosave);
   checkEditorBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     insertChecklistLine(editorBody);
@@ -1581,13 +1661,38 @@ export function mountKeepNotes(root) {
   });
 
   /**
-   * @param {{ pinned?: boolean } | null | undefined} note
+   * @param {{ pinned?: boolean, archived?: boolean } | null | undefined} note
    */
   function syncPinEditorBtn(note) {
+    if (note?.archived) {
+      pinEditorBtn.innerHTML = RESTORE_ICON_16.replace('width="16" height="16"', 'width="18" height="18"');
+      pinEditorBtn.setAttribute('aria-pressed', 'false');
+      pinEditorBtn.title = 'Unarchive';
+      pinEditorBtn.setAttribute('aria-label', 'Unarchive');
+      return;
+    }
+    pinEditorBtn.innerHTML = PIN_ICON;
     const pinned = Boolean(note?.pinned);
     pinEditorBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
     pinEditorBtn.title = pinned ? 'Unpin' : 'Pin';
     pinEditorBtn.setAttribute('aria-label', pinned ? 'Unpin' : 'Pin');
+  }
+
+  /**
+   * @param {{ archived?: boolean } | null | undefined} note
+   */
+  function syncEditorDiscard(note) {
+    if (note?.archived) {
+      deleteBtn.classList.add('keep-notes__btn--danger');
+      deleteBtn.innerHTML = TRASH_ICON_18;
+      deleteBtn.title = 'Delete forever';
+      deleteBtn.setAttribute('aria-label', 'Delete note permanently');
+    } else {
+      deleteBtn.classList.remove('keep-notes__btn--danger');
+      deleteBtn.innerHTML = ARCHIVE_ICON_18;
+      deleteBtn.title = 'Archive';
+      deleteBtn.setAttribute('aria-label', 'Archive note');
+    }
   }
 
   /**
@@ -1608,6 +1713,8 @@ export function mountKeepNotes(root) {
     } else {
       const audio = document.createElement('audio');
       audio.controls = true;
+      audio.preload = 'metadata';
+      audio.setAttribute('playsinline', '');
       audio.className = 'keep-notes__editor-audio';
       audio.src = attachmentUrl(note);
       item.append(audio);
@@ -1627,12 +1734,14 @@ export function mountKeepNotes(root) {
     editorBody.value = note.body || '';
     populateCategorySelect(editorCatSelect, editorNewCat, note.category || '');
     syncPinEditorBtn(note);
+    syncEditorDiscard(note);
     renderEditorMedia(note);
     overlay.hidden = false;
     editorBody.focus();
   }
 
   function closeEditor() {
+    window.clearTimeout(editorSaveTimer);
     if (recorder && recorder.state !== 'inactive') {
       recorder.stop();
     }
@@ -1647,7 +1756,7 @@ export function mountKeepNotes(root) {
    * @param {string} body
    * @param {string} [category]
    */
-  async function persistNote(id, title, body, category) {
+  async function persistNote(id, title, body, category, opts = {}) {
     try {
       const r = await fetch(`/api/keep-notes/${encodeURIComponent(id)}`, {
         method: 'PATCH',
@@ -1663,13 +1772,31 @@ export function mountKeepNotes(root) {
         populateCategorySelect(composeCatSelect, composeNewCat, resolveCategoryValue(composeCatSelect, composeNewCat));
         populateCollectionFilter();
       }
-      sortNotes();
-      renderNotes();
+      if (!opts.quiet) {
+        sortNotes();
+        renderNotes();
+      }
       return data.note;
     } catch (e) {
       showStatus(String(e?.message || e), true);
       return null;
     }
+  }
+
+  let editorSaveTimer = 0;
+  function queueEditorAutosave() {
+    if (!editingNote) return;
+    window.clearTimeout(editorSaveTimer);
+    editorSaveTimer = window.setTimeout(() => {
+      if (!editingNote) return;
+      const id = editingNote.id;
+      const title = editorTitle.value.trim();
+      const body = editorBody.value;
+      const category = resolveCategoryValue(editorCatSelect, editorNewCat);
+      void persistNote(id, title, body, category, { quiet: true }).then((saved) => {
+        if (saved && editingNote?.id === id) editingNote = saved;
+      });
+    }, 1200);
   }
 
   function dismissEditor() {
@@ -1720,6 +1847,11 @@ export function mountKeepNotes(root) {
     e.stopPropagation();
     if (!editingNote) return;
     const noteId = editingNote.id;
+    if (editingNote.archived) {
+      closeEditor();
+      await unarchiveNoteById(noteId);
+      return;
+    }
     await saveEditor();
     await togglePin(noteId);
     const refreshed = notes.find((n) => n.id === noteId);
@@ -1733,8 +1865,10 @@ export function mountKeepNotes(root) {
     e.stopPropagation();
     if (!editingNote) return;
     const noteId = editingNote.id;
+    const archived = Boolean(editingNote.archived);
     closeEditor();
-    beginPendingDelete(noteId);
+    if (archived) beginPendingDelete(noteId);
+    else void archiveNoteById(noteId);
   });
 
   imageBtn.addEventListener('click', (e) => {
@@ -1913,6 +2047,26 @@ export function mountKeepNotes(root) {
       notes = notes.filter((n) => n.id !== id);
       renderNotes();
       showStatus('Note archived');
+    } catch (e) {
+      showStatus(String(e?.message || e), true);
+    }
+  }
+
+  /**
+   * @param {string} id
+   */
+  async function unarchiveNoteById(id) {
+    try {
+      const r = await fetch(`/api/keep-notes/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: false }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'unarchive failed');
+      notes = notes.filter((n) => n.id !== id);
+      renderNotes();
+      showStatus('Note restored');
     } catch (e) {
       showStatus(String(e?.message || e), true);
     }

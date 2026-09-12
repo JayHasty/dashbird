@@ -119,7 +119,7 @@ export async function rememberKeepNoteCategory(category, env = process.env) {
  */
 export async function listKeepNoteCategories(env = process.env) {
   const custom = await readCustomCategories(env);
-  const notes = await listKeepNotesRaw(env);
+  const notes = await listKeepNotesRaw(env, { archived: 'all' });
   /** @type {string[]} */
   const out = [];
   const seen = new Set();
@@ -223,10 +223,12 @@ export function compareKeepNotes(a, b) {
 
 /**
  * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ archived?: 'exclude' | 'only' | 'all' }} [opts]
  */
-async function listKeepNotesRaw(env = process.env) {
+async function listKeepNotesRaw(env = process.env, opts = {}) {
   const root = keepNotesRoot(env);
   await mkdir(root, { recursive: true });
+  const mode = opts.archived || 'exclude';
   let entries;
   try {
     entries = await readdir(root, { withFileTypes: true });
@@ -237,7 +239,10 @@ async function listKeepNotesRaw(env = process.env) {
   for (const ent of entries) {
     if (!ent.isDirectory()) continue;
     const note = await readNoteFromDir(path.join(root, ent.name));
-    if (note && !note.archived) notes.push(note);
+    if (!note) continue;
+    if (mode === 'exclude' && note.archived) continue;
+    if (mode === 'only' && !note.archived) continue;
+    notes.push(note);
   }
   return notes;
 }
@@ -264,9 +269,10 @@ async function setNoteSortOrder(id, sortOrder, env = process.env) {
 
 /**
  * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ archived?: boolean }} [opts]
  */
-export async function listKeepNotes(env = process.env) {
-  const notes = await listKeepNotesRaw(env);
+export async function listKeepNotes(env = process.env, opts = {}) {
+  const notes = await listKeepNotesRaw(env, { archived: opts.archived === true ? 'only' : 'exclude' });
   notes.sort(compareKeepNotes);
   return notes;
 }
@@ -419,7 +425,7 @@ export async function deleteKeepNote(id, env = process.env) {
 
 /**
  * @param {string[]} ids
- * @param {'delete' | 'archive'} action
+ * @param {'delete' | 'archive' | 'unarchive'} action
  * @param {NodeJS.ProcessEnv} [env]
  */
 export async function bulkKeepNotesAction(ids, action, env = process.env) {
@@ -433,7 +439,7 @@ export async function bulkKeepNotesAction(ids, action, env = process.env) {
     err.code = 'invalid_ids';
     throw err;
   }
-  if (action !== 'delete' && action !== 'archive') {
+  if (action !== 'delete' && action !== 'archive' && action !== 'unarchive') {
     const err = new Error('invalid_action');
     err.code = 'invalid_action';
     throw err;
@@ -446,6 +452,8 @@ export async function bulkKeepNotesAction(ids, action, env = process.env) {
     try {
       if (action === 'delete') {
         await deleteKeepNote(id, env);
+      } else if (action === 'unarchive') {
+        await updateKeepNote(id, { archived: false }, env);
       } else {
         await updateKeepNote(id, { archived: true, pinned: false }, env);
       }
@@ -629,6 +637,18 @@ export async function clearKeepNoteAttachment(id, env = process.env) {
  * @param {NodeJS.ProcessEnv} [env]
  */
 export async function readKeepNoteAttachment(id, filename, env = process.env) {
+  const file = await keepNoteAttachmentFile(id, filename, env);
+  const buf = await readFile(file.path);
+  return { buf, mimeType: file.mimeType };
+}
+
+/**
+ * Path + size for streaming long voice attachments (Range requests on phone).
+ * @param {string} id
+ * @param {string} filename
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export async function keepNoteAttachmentFile(id, filename, env = process.env) {
   const existing = await getKeepNote(id, env);
   if (!existing?.attachment) {
     const err = new Error('not_found');
@@ -641,6 +661,11 @@ export async function readKeepNoteAttachment(id, filename, env = process.env) {
     err.code = 'not_found';
     throw err;
   }
-  const buf = await readFile(path.join(noteDir(id, env), safe));
-  return { buf, mimeType: existing.attachment.mimeType || 'application/octet-stream' };
+  const filePath = path.join(noteDir(id, env), safe);
+  const st = await stat(filePath);
+  return {
+    path: filePath,
+    mimeType: existing.attachment.mimeType || 'application/octet-stream',
+    size: st.size,
+  };
 }

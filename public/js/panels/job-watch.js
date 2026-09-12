@@ -119,13 +119,14 @@ function matchStarsNode({ stars = 0, kind = 'live' } = {}) {
 
 /**
  * Title that opens the posting when there is a live URL to open.
- * @param {{ url?: string, label: string }} opts
+ * @param {{ url?: string, label: string, title?: string }} opts
  * @returns {HTMLElement}
  */
-function titleNode({ url, label }) {
+function titleNode({ url, label, title }) {
   const node = document.createElement(url ? 'a' : 'span');
   node.className = 'job-watch__label';
   node.textContent = label;
+  if (title) node.title = title;
   if (url) {
     /** @type {HTMLAnchorElement} */ (node).href = url;
     /** @type {HTMLAnchorElement} */ (node).target = '_blank';
@@ -883,7 +884,15 @@ export function mountJobWatch(root) {
 
       const titleRow = document.createElement('div');
       titleRow.className = 'job-watch__title-row';
-      titleRow.append(titleNode({ url: open ? t.job.url : '', label: t.label }));
+      const postedTitle = String(t.job?.title || '').trim();
+      const showPosted = Boolean(open && postedTitle);
+      titleRow.append(
+        titleNode({
+          url: open ? t.job.url : '',
+          label: showPosted ? postedTitle : t.label,
+          title: showPosted && t.label && t.label !== postedTitle ? `Watching: ${t.label}` : '',
+        }),
+      );
 
       const sub = document.createElement('span');
       sub.className = 'muted job-watch__sub';

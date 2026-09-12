@@ -11,6 +11,7 @@ import {
   removeRecentArchivedTask,
   RECENT_ARCHIVED_LIMIT,
 } from './vikunja-recent-archive-store.js';
+import { applyTaskListOrder, loadTaskListOrder, saveTaskListOrder } from './task-list-order-store.js';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_TITLE_LEN = 280;
@@ -161,11 +162,24 @@ export function mapVikunjaTask(task) {
     text,
     done: Boolean(task.done),
     projectId,
+    position: Number.isFinite(Number(task.position)) ? Number(task.position) : 0,
     isSubtask: vikunjaTaskIsSubtask(task),
     subtaskCount,
     doneAt,
     description: String(task.description || ''),
   };
+}
+
+/**
+ * List order: Vikunja `position` ascending, then newest id first (legacy default).
+ * @param {{ id?: string, position?: number }} a
+ * @param {{ id?: string, position?: number }} b
+ */
+export function comparePanelTodoOrder(a, b) {
+  const pa = Number.isFinite(Number(a?.position)) ? Number(a.position) : 0;
+  const pb = Number.isFinite(Number(b?.position)) ? Number(b.position) : 0;
+  if (pa !== pb) return pa - pb;
+  return Number(b?.id) - Number(a?.id);
 }
 
 /**
@@ -578,6 +592,19 @@ export async function reorderPanelProjects(idsRaw, env = process.env) {
 }
 
 /**
+ * Persist a custom task order for a project (Dashbird JSON; Vikunja view positions
+ * are unavailable with the panel API token).
+ * @param {unknown} idsRaw
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ projectId?: number | null }} [opts]
+ * @returns {Promise<Array<{ id: string, position: number }>>}
+ */
+export async function reorderPanelTodos(idsRaw, env = process.env, opts = {}) {
+  const ids = await saveTaskListOrder(opts.projectId, idsRaw, env);
+  return ids.map((id, i) => ({ id, position: (i + 1) * 65536 }));
+}
+
+/**
  * Move a task to another project (keeps open/done state).
  * @param {string} id
  * @param {number} projectId
@@ -736,10 +763,12 @@ export async function listPanelTodos(env = process.env, opts = {}) {
     if (rows.length < PANEL_TODOS_PER_PAGE) break;
   }
 
-  return all.map((item) => ({
+  const nested = all.map((item) => ({
     ...item,
     subtasks: subtasksByParent.get(item.id) || [],
   }));
+  const orderedIds = await loadTaskListOrder(projectId, env);
+  return applyTaskListOrder(nested, orderedIds);
 }
 
 /**

@@ -6,10 +6,11 @@ import {
 } from '../lib/mobile-history.js';
 import {
   createAttendanceChecks,
+  createBigEventsCheck,
   createCityChecks,
   createRangeCalendar,
   normalizeLocalTime,
-} from './events-filter-ui.js?v=events-filter-ui-20260805-1';
+} from './events-filter-ui.js?v=big-events-filter-1';
 
 const EVENTS_CACHE_KEY = 'events-finder:events';
 const EVENTS_CACHE_MAX_MS = 6 * 60 * 60 * 1000;
@@ -584,6 +585,18 @@ export function mountEventsFinderMobile(root) {
   });
   attendanceField.append(attendanceLabel, attendanceChecks.root);
   filterPanel.append(attendanceField);
+
+  const bigEventsField = document.createElement('div');
+  bigEventsField.className = 'mobile-events__filter mobile-events__filter--block';
+  const bigEventsLabel = document.createElement('span');
+  bigEventsLabel.textContent = 'Big events';
+  const bigEventsChecks = createBigEventsCheck({
+    idPrefix: 'mobile-events-big',
+    classPrefix: 'mobile-events',
+    showBigEvents: true,
+  });
+  bigEventsField.append(bigEventsLabel, bigEventsChecks.root);
+  filterPanel.append(bigEventsField);
 
   const citiesField = document.createElement('div');
   citiesField.className = 'mobile-events__filter mobile-events__filter--block';
@@ -1799,6 +1812,7 @@ export function mountEventsFinderMobile(root) {
       dateTo: range.dateTo,
       earliestLocalTime: normalizeLocalTime(earliestRaw) || null,
       attendance: attendanceChecks.getAttendance(),
+      showBigEvents: bigEventsChecks.getShowBigEvents(),
       originZip: originZipDigits || null,
     };
   }
@@ -1825,6 +1839,7 @@ export function mountEventsFinderMobile(root) {
       );
       timeInput.value = normalizeLocalTime(filters.earliestLocalTime) || '';
       attendanceChecks.setAttendance(filters.attendance || 'any');
+      bigEventsChecks.setShowBigEvents(filters.showBigEvents !== false);
       if (Array.isArray(filters.cities) && filters.cities.length) {
         savedCitySelection = filters.cities.map(String);
       } else {
@@ -3478,8 +3493,10 @@ export function mountEventsFinderMobile(root) {
 
     const activeBigEvents = showSkipped
       ? []
-      : (Array.isArray(data.conferenceWatchlistItems) ? data.conferenceWatchlistItems : [])
-          .filter((it) => it && it.displayActive && !it.skipped && !it.snoozed);
+      : bigEventsChecks.getShowBigEvents()
+        ? (Array.isArray(data.conferenceWatchlistItems) ? data.conferenceWatchlistItems : [])
+            .filter((it) => it && it.displayActive && !it.skipped && !it.snoozed)
+        : [];
 
     list.replaceChildren();
     refreshConferencePopoutIfOpen();
@@ -3525,6 +3542,10 @@ export function mountEventsFinderMobile(root) {
   attendanceChecks.root.addEventListener('change', () => {
     if (lastEventsPayload) paint(lastEventsPayload);
     scheduleFilterAutosave({ reload: true });
+  });
+  bigEventsChecks.root.addEventListener('change', () => {
+    if (lastEventsPayload) paint(lastEventsPayload);
+    scheduleFilterAutosave();
   });
 
   const cachedEvents = readPanelCache(EVENTS_CACHE_KEY, EVENTS_CACHE_MAX_MS);

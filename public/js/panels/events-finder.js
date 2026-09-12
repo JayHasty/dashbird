@@ -5,10 +5,11 @@
  */
 import {
   createAttendanceChecks,
+  createBigEventsCheck,
   createCityChecks,
   createRangeCalendar,
   normalizeLocalTime,
-} from './events-filter-ui.js?v=attendance-online-1';
+} from './events-filter-ui.js?v=big-events-filter-1';
 import { readPanelCache, writePanelCache } from '../lib/panel-cache.js';
 import { beginWaitCursor, endWaitCursor } from '../lib/wait-cursor.js';
 import { createPolygonWeatherIcon } from './weather-polygon.js';
@@ -588,6 +589,20 @@ export function mountEventsFinder(root) {
   });
   attendanceField.append(attendanceChecks.root);
   filterPanel.append(attendanceField);
+
+  const bigEventsField = document.createElement('div');
+  bigEventsField.className = 'events-finder__field';
+  const bigEventsLabel = document.createElement('p');
+  bigEventsLabel.className = 'events-finder__label';
+  bigEventsLabel.textContent = 'Big events';
+  bigEventsField.append(bigEventsLabel);
+  const bigEventsChecks = createBigEventsCheck({
+    idPrefix: 'events-finder-big',
+    classPrefix: 'events-finder',
+    showBigEvents: true,
+  });
+  bigEventsField.append(bigEventsChecks.root);
+  filterPanel.append(bigEventsField);
 
   const citiesField = document.createElement('div');
   citiesField.className = 'events-finder__field';
@@ -2535,6 +2550,7 @@ export function mountEventsFinder(root) {
       dateTo: range.dateTo,
       earliestLocalTime: earliest || null,
       attendance: attendanceChecks.getAttendance(),
+      showBigEvents: bigEventsChecks.getShowBigEvents(),
       originZip,
     };
   }
@@ -6571,9 +6587,12 @@ export function mountEventsFinder(root) {
     const allBigEvents = Array.isArray(data.conferenceWatchlistItems)
       ? data.conferenceWatchlistItems
       : [];
-    const activeBigEvents = showSkipped
-      ? allBigEvents.filter((it) => it && it.skipped === true)
-      : allBigEvents.filter((it) => it && it.displayActive && !it.skipped && !it.snoozed);
+    const includeBigEvents = showSkipped || bigEventsChecks.getShowBigEvents();
+    const activeBigEvents = !includeBigEvents
+      ? []
+      : showSkipped
+        ? allBigEvents.filter((it) => it && it.skipped === true)
+        : allBigEvents.filter((it) => it && it.displayActive && !it.skipped && !it.snoozed);
     conferenceToggle.dataset.producerCount = String(
       (Array.isArray(data.conferenceWatchlistItems) ? data.conferenceWatchlistItems : []).length,
     );
@@ -6890,6 +6909,8 @@ export function mountEventsFinder(root) {
   for (const el of controls) el.disabled = true;
   calendar.setDisabled(true);
   cityChecks.setDisabled(true);
+  attendanceChecks.setDisabled(true);
+  bigEventsChecks.setDisabled(true);
   filterMsg.hidden = false;
   filterMsg.textContent = 'Loading…';
 
@@ -6939,6 +6960,7 @@ export function mountEventsFinder(root) {
       );
       timeInput.value = normalizeLocalTime(data.filters?.earliestLocalTime) || '';
       attendanceChecks.setAttendance(data.filters?.attendance || 'any');
+      bigEventsChecks.setShowBigEvents(data.filters?.showBigEvents !== false);
       if (Array.isArray(data.filters?.cities) && data.filters.cities.length) {
         savedCitySelection = data.filters.cities.map(String);
       } else {
@@ -6950,6 +6972,7 @@ export function mountEventsFinder(root) {
         calendar.setDisabled(false);
         cityChecks.setDisabled(false);
         attendanceChecks.setDisabled(false);
+        bigEventsChecks.setDisabled(false);
         filtersReady = true;
         filterMsg.hidden = true;
         filterMsg.textContent = '';
@@ -7034,5 +7057,9 @@ export function mountEventsFinder(root) {
   attendanceChecks.root.addEventListener('change', () => {
     if (lastEventsPayload) paintEvents(lastEventsPayload);
     scheduleFilterAutosave({ reload: true });
+  });
+  bigEventsChecks.root.addEventListener('change', () => {
+    if (lastEventsPayload) paintEvents(lastEventsPayload);
+    scheduleFilterAutosave();
   });
 }

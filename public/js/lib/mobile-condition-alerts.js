@@ -37,7 +37,9 @@ let popupRadarCleanup = null;
  * @typedef {{ kind: 'image', src: string, alt?: string }
  *   | { kind: 'iframe', src: string, title?: string, cameras?: VolcanoCam[], cameraIndex?: number }
  *   | { kind: 'frames', urls: string[], frameMs?: number, alt?: string }
- *   | { kind: 'radar', data: object }} AlertMedia
+ *   | { kind: 'radar', data: object }
+ *   | { kind: 'slides', slides: AlertSlide[] }} AlertMedia
+ * @typedef {{ id: string, label: string, media: Exclude<AlertMedia, { kind: 'slides' }> }} AlertSlide
  * @typedef {{ active: boolean, title: string, lines: string[], media?: AlertMedia | null }} AlertState
  * @typedef {{ key: string, glyph: string, label: string, load: () => Promise<AlertState>,
  *   btn: HTMLButtonElement | null, state: AlertState }} AlertDef
@@ -152,8 +154,12 @@ async function loadVolcano() {
 
 async function loadGeomag() {
   try {
-    const r = await fetch('/api/magnetosphere', { cache: 'no-store' });
-    const j = await r.json().catch(() => ({}));
+    const [magRes, geoRes] = await Promise.all([
+      fetch('/api/magnetosphere', { cache: 'no-store' }),
+      fetch('/api/geoelectric-field', { cache: 'no-store' }),
+    ]);
+    const j = await magRes.json().catch(() => ({}));
+    const geo = await geoRes.json().catch(() => ({}));
     const active = j?.stormGte2 === true || j?.stormActive === true;
     if (!active) return idle();
     const storm = j.storm || {};
@@ -167,10 +173,39 @@ async function loadGeomag() {
       if (parts.length) lines.push(parts.join(' \u00B7 '));
     }
     const urls = Array.isArray(j.frames) ? j.frames.map((f) => f?.url).filter(Boolean) : [];
-    /** @type {AlertMedia} */
-    const media = urls.length
+    /** @type {Exclude<AlertMedia, { kind: 'slides' }>} */
+    const stormMedia = urls.length
       ? { kind: 'frames', urls, frameMs: Number(j.frameMs) || 450, alt: 'Magnetosphere cut-plane animation' }
       : { kind: 'image', src: '/assets/sky/aurora.png', alt: 'Aurora' };
+    /** @type {AlertSlide[]} */
+    const slides = [{ id: 'storm', label: 'Magnetosphere', media: stormMedia }];
+    const geoRegions = Array.isArray(geo?.regions) ? geo.regions : [];
+    for (const region of geoRegions) {
+      const src = String(region?.imageSrc || region?.imageUrl || '').trim();
+      if (!src) continue;
+      const label = String(region.label || 'Electric grid').trim() || 'Electric grid';
+      slides.push({
+        id: String(region.id || src),
+        label,
+        media: {
+          kind: 'image',
+          src,
+          alt: `NOAA geoelectric field \u2014 ${label}`,
+        },
+      });
+    }
+    if (!geoRegions.length) {
+      const src = String(geo?.imageSrc || geo?.imageUrl || '').trim();
+      if (src) {
+        slides.push({
+          id: 'grid',
+          label: 'Electric grid',
+          media: { kind: 'image', src, alt: 'NOAA 1-minute geoelectric field map' },
+        });
+      }
+    }
+    /** @type {AlertMedia} */
+    const media = slides.length > 1 ? { kind: 'slides', slides } : stormMedia;
     return { active: true, title: 'Geomagnetic storm', lines, media };
   } catch {
     return idle();
@@ -241,11 +276,11 @@ async function loadRain() {
   }
 }
 
-function closePopup() {
-  if (popupKeyHandler) {
-    document.removeEventListener('keydown', popupKeyHandler);
-    popupKeyHandler = null;
-  }
+/** Bumped to cancel in-flight frame decode/swap when the popup closes or slides change. */
+let popupFrameLoopGen = 0;
+
+function stopPopupMedia() {
+  popupFrameLoopGen += 1;
   if (popupMediaTimer) {
     clearInterval(popupMediaTimer);
     popupMediaTimer = null;
@@ -258,9 +293,164 @@ function closePopup() {
     }
     popupRadarCleanup = null;
   }
+}
+
+function closePopup() {
+  if (popupKeyHandler) {
+    document.removeEventListener('keydown', popupKeyHandler);
+    popupKeyHandler = null;
+  }
+  stopPopupMedia();
   popupBackdrop?.remove();
   popupBackdrop = null;
   for (const a of ALERTS) a.btn?.setAttribute('aria-expanded', 'false');
+}
+
+/**
+ * Fixed-size image box so loading / frame swaps cannot resize the dialog.
+ * @param {HTMLElement} host
+ * @param {string} src
+ * @param {string} [alt]
+ */
+function appendStillImage(host, src, alt) {
+  const stage = document.createElement('div');
+  stage.className = 'mobile-alert-header__media-stage';
+  const img = document.createElement('img');
+  img.className = 'mobile-alert-header__media-img mobile-alert-header__media-img--show';
+  img.src = src;
+  img.alt = alt || '';
+  img.decoding = 'async';
+  stage.append(img);
+  host.append(stage);
+}
+
+/**
+ * Double-buffer NOAA frame loops so the popup keeps a stable size while frames decode.
+ * @param {HTMLElement} host
+ * @param {string[]} urls
+ * @param {string} [alt]
+ * @param {number} [frameMs]
+ */
+function startStableFrameLoop(host, urls, alt, frameMs) {
+  const stage = document.createElement('div');
+  stage.className = 'mobile-alert-header__media-stage';
+  const a = document.createElement('img');
+  const b = document.createElement('img');
+  a.className = 'mobile-alert-header__media-img mobile-alert-header__media-img--show';
+  b.className = 'mobile-alert-header__media-img';
+  a.alt = alt || '';
+  b.alt = '';
+  b.setAttribute('aria-hidden', 'true');
+  a.decoding = 'async';
+  b.decoding = 'async';
+  stage.append(a, b);
+  host.append(stage);
+
+  const list = urls.filter(Boolean);
+  if (!list.length) return;
+  for (const url of list) {
+    const pre = new Image();
+    pre.decoding = 'async';
+    pre.src = url;
+  }
+
+  const gen = ++popupFrameLoopGen;
+  let idx = 0;
+  let showingA = true;
+  a.src = list[0];
+
+  /**
+   * @param {number} i
+   */
+  async function paint(i) {
+    if (gen !== popupFrameLoopGen) return;
+    const url = list[i % list.length];
+    const hidden = showingA ? b : a;
+    const shown = showingA ? a : b;
+    hidden.src = url;
+    try {
+      await hidden.decode();
+    } catch {
+      /* decode can fail on abort; still try to show */
+    }
+    if (gen !== popupFrameLoopGen) return;
+    hidden.classList.add('mobile-alert-header__media-img--show');
+    shown.classList.remove('mobile-alert-header__media-img--show');
+    showingA = !showingA;
+  }
+
+  if (list.length < 2) return;
+  const ms = Number(frameMs) || 450;
+  if (popupMediaTimer) clearInterval(popupMediaTimer);
+  popupMediaTimer = setInterval(() => {
+    idx = (idx + 1) % list.length;
+    void paint(idx);
+  }, ms);
+}
+
+/**
+ * Overlay arrows + caption row for paging slides or cameras.
+ * @param {{ ariaPrev: string, ariaNext: string, onStep: (delta: number) => void }} opts
+ */
+function attachSlideControls(wrap, frameWrap, opts) {
+  const labelEl = document.createElement('span');
+  labelEl.className = 'mobile-alert-header__cam-label';
+  const counterEl = document.createElement('span');
+  counterEl.className = 'mobile-alert-header__cam-counter';
+
+  const arrowPrev = document.createElement('button');
+  arrowPrev.type = 'button';
+  arrowPrev.className = 'mobile-alert-header__cam-arrow mobile-alert-header__cam-arrow--prev';
+  arrowPrev.setAttribute('aria-label', opts.ariaPrev);
+  arrowPrev.textContent = '\u2039';
+  arrowPrev.addEventListener('click', (e) => {
+    e.stopPropagation();
+    opts.onStep(-1);
+  });
+
+  const arrowNext = document.createElement('button');
+  arrowNext.type = 'button';
+  arrowNext.className = 'mobile-alert-header__cam-arrow mobile-alert-header__cam-arrow--next';
+  arrowNext.setAttribute('aria-label', opts.ariaNext);
+  arrowNext.textContent = '\u203A';
+  arrowNext.addEventListener('click', (e) => {
+    e.stopPropagation();
+    opts.onStep(1);
+  });
+
+  frameWrap.append(arrowPrev, arrowNext);
+
+  const meta = document.createElement('div');
+  meta.className = 'mobile-alert-header__cam-meta';
+  const navPrev = document.createElement('button');
+  navPrev.type = 'button';
+  navPrev.className = 'mobile-alert-header__cam-nav';
+  navPrev.setAttribute('aria-label', opts.ariaPrev);
+  navPrev.textContent = '\u2039';
+  navPrev.addEventListener('click', () => opts.onStep(-1));
+  const navNext = document.createElement('button');
+  navNext.type = 'button';
+  navNext.className = 'mobile-alert-header__cam-nav';
+  navNext.setAttribute('aria-label', opts.ariaNext);
+  navNext.textContent = '\u203A';
+  navNext.addEventListener('click', () => opts.onStep(1));
+  meta.append(navPrev, labelEl, counterEl, navNext);
+  wrap.append(meta);
+  return { labelEl, counterEl };
+}
+
+/**
+ * @param {Exclude<AlertMedia, { kind: 'slides' }>} media
+ * @param {HTMLElement} host
+ */
+function fillMediaHost(host, media) {
+  if (media.kind === 'image') {
+    appendStillImage(host, media.src, media.alt);
+    return;
+  }
+  if (media.kind === 'frames' && media.urls.length) {
+    startStableFrameLoop(host, media.urls, media.alt, media.frameMs);
+  }
 }
 
 /**
@@ -271,8 +461,50 @@ function closePopup() {
  */
 function buildMedia(media) {
   if (!media) return null;
+
+  if (media.kind === 'slides' && media.slides.length) {
+    const slides = media.slides.filter((s) => s?.media && s.media.kind !== 'slides');
+    if (!slides.length) return null;
+    if (slides.length === 1) return buildMedia(slides[0].media);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mobile-alert-header__media mobile-alert-header__media--cams';
+    const frameWrap = document.createElement('div');
+    frameWrap.className = 'mobile-alert-header__frame-wrap';
+    const stageHost = document.createElement('div');
+    stageHost.className = 'mobile-alert-header__slide-host';
+    frameWrap.append(stageHost);
+    wrap.append(frameWrap);
+
+    let index = 0;
+    const { labelEl, counterEl } = attachSlideControls(wrap, frameWrap, {
+      ariaPrev: 'Previous storm graphic',
+      ariaNext: 'Next storm graphic',
+      onStep: (delta) => {
+        index = (index + delta + slides.length) % slides.length;
+        paint();
+      },
+    });
+
+    const paint = () => {
+      stopPopupMedia();
+      stageHost.replaceChildren();
+      const slide = slides[index];
+      fillMediaHost(stageHost, slide.media);
+      labelEl.textContent = slide.label || `Graphic ${index + 1}`;
+      counterEl.textContent = `${index + 1} / ${slides.length}`;
+    };
+
+    paint();
+    return wrap;
+  }
+
   const wrap = document.createElement('div');
   wrap.className = 'mobile-alert-header__media';
+  if (media.kind === 'image' || media.kind === 'frames') {
+    fillMediaHost(wrap, media);
+    return wrap.childNodes.length ? wrap : null;
+  }
 
   if (media.kind === 'radar') {
     wrap.classList.add('mobile-alert-header__media--radar');
@@ -389,41 +621,6 @@ function buildMedia(media) {
     );
     iframe.allowFullscreen = true;
     wrap.append(iframe);
-    return wrap;
-  }
-
-  if (media.kind === 'image') {
-    const img = document.createElement('img');
-    img.className = 'mobile-alert-header__media-img';
-    img.src = media.src;
-    img.alt = media.alt || '';
-    img.decoding = 'async';
-    img.loading = 'lazy';
-    wrap.append(img);
-    return wrap;
-  }
-
-  if (media.kind === 'frames' && media.urls.length) {
-    const img = document.createElement('img');
-    img.className = 'mobile-alert-header__media-img';
-    img.alt = media.alt || '';
-    img.decoding = 'async';
-    const urls = media.urls;
-    for (const url of urls) {
-      const pre = new Image();
-      pre.decoding = 'async';
-      pre.src = url;
-    }
-    let idx = 0;
-    img.src = urls[0];
-    if (urls.length > 1) {
-      if (popupMediaTimer) clearInterval(popupMediaTimer);
-      popupMediaTimer = setInterval(() => {
-        idx = (idx + 1) % urls.length;
-        img.src = urls[idx];
-      }, Number(media.frameMs) || 450);
-    }
-    wrap.append(img);
     return wrap;
   }
 

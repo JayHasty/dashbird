@@ -219,7 +219,7 @@ async function mountDeferredPanels(config) {
       }),
     ),
     mountWhenReady('job-watch', () =>
-      import('./panels/job-watch.js?v=listing-companies-filter').then(({ mountJobWatch }) => {
+      import('./panels/job-watch.js?v=posted-title-type').then(({ mountJobWatch }) => {
         mountJobWatch(document.getElementById('mount-job-watch'));
         const scanBtn = document.getElementById('job-watch-scan');
         if (scanBtn) {
@@ -230,7 +230,7 @@ async function mountDeferredPanels(config) {
       }),
     ),
     mountWhenReady('events-finder', () =>
-      import('./panels/events-finder.js?v=attendance-online-1').then(({ mountEventsFinder }) => {
+      import('./panels/events-finder.js?v=big-events-filter-1').then(({ mountEventsFinder }) => {
         mountEventsFinder(document.getElementById('mount-events-finder'));
       }),
     ),
@@ -270,7 +270,7 @@ async function mainMobile() {
 
   const [{ mountViewModeToggle }, { mountMobileShell }] = await Promise.all([
     import('./panels/view-mode-toggle.js'),
-    import('./panels/mobile-shell.js?v=mobile-panels-20260810-gmail-open-1'),
+    import('./panels/mobile-shell.js?v=mobile-panels-20260825-big-events-filter-1'),
   ]);
 
   mountViewModeToggle(document.getElementById('mount-view-mode'));
@@ -348,6 +348,7 @@ async function mainDesktop() {
     { mountViewModeToggle },
     { mountPageTabs },
     { mountSkySidebarToggle },
+    { mountTasksKeepCollapse },
     { mountBookmarkGrid, createBookmarksCoordinator },
     { mountCalendarUpcoming },
     { mountCalendar },
@@ -355,6 +356,7 @@ async function mainDesktop() {
     import('./panels/view-mode-toggle.js'),
     import('./panels/page-tabs.js'),
     import('./panels/sky-sidebar-toggle.js'),
+    import('./panels/tasks-keep-collapse.js'),
     import('./panels/bookmarks.js'),
     import('./panels/calendar-upcoming.js'),
     import('./panels/calendar.js'),
@@ -363,6 +365,7 @@ async function mainDesktop() {
   mountViewModeToggle(document.getElementById('mount-view-mode'));
   mountPageTabs(document.getElementById('mount-page-tabs'), { onChange: showPage });
   mountSkySidebarToggle(document.getElementById('sky-sidebar-toggle'));
+  mountTasksKeepCollapse();
 
   const bookmarksCoordinator = createBookmarksCoordinator();
   const bookmarksPersonalPromise = mountBookmarkGrid(
@@ -394,7 +397,7 @@ async function mainDesktop() {
 
   mountCalendar(document.getElementById('mount-calendar'), config);
 
-  void import('./panels/tasks.js?v=tasks-grip-1')
+  void import('./panels/tasks.js?v=tasks-reorder-1')
     .then(({ mountTasks }) => {
       mountTasks(document.getElementById('mount-tasks'), config);
     })
@@ -421,7 +424,7 @@ async function mainDesktop() {
   void configPromise.then((fresh) => {
     if (!fresh || typeof fresh !== 'object') return;
     if (fresh.vikunjaPublicUrl === config.vikunjaPublicUrl) return;
-    import('./panels/tasks.js?v=tasks-grip-1')
+    import('./panels/tasks.js?v=tasks-reorder-1')
       .then(({ mountTasks }) => {
         mountTasks(document.getElementById('mount-tasks'), fresh);
       })

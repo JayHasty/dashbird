@@ -14,7 +14,11 @@ import {
   priorityToStars,
   scoreToStars,
 } from './job-watch-assess.js';
-import { parseLocations } from './job-watch-detail.js';
+import {
+  coerceOpportunityType,
+  OPPORTUNITY_DETAIL_VERSION,
+  parseLocations,
+} from './job-watch-detail.js';
 import {
   collectListingCompanies,
   fetchSourceDetail,
@@ -29,6 +33,8 @@ let scanInFlight = null;
 
 /** Only surfaced rows get a detail fetch, so a scan stays a handful of requests. */
 const MAX_DETAIL_FETCHES = 12;
+/** Parser-version bump: refresh every live card in one scan instead of dripping 12/2h. */
+const MAX_DETAIL_FETCHES_REPARSE = 40;
 
 /** Postings without an `updated_at` (Google) are re-read on this cadence. */
 const DETAIL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -41,7 +47,11 @@ const DETAIL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 function detailIsFresh(detail, job) {
   if (!detail) return false;
   // Older snapshots predate workMode / locations — force a refresh.
-  if (!detail.workMode || !Array.isArray(detail.locations) || detail.detailVersion !== 2) {
+  if (
+    !detail.workMode
+    || !Array.isArray(detail.locations)
+    || detail.detailVersion !== OPPORTUNITY_DETAIL_VERSION
+  ) {
     return false;
   }
   if (job.updatedAt && detail.updatedAt === job.updatedAt) return true;
@@ -245,9 +255,16 @@ async function runJobWatchScanUnlocked(env = process.env, opts = {}) {
 
   /** @type {Record<string, object>} */
   const details = {};
+  let staleParser = false;
   for (const [id, detail] of Object.entries(state.details || {})) {
-    if (byId.has(String(id))) details[id] = detail;
+    if (!byId.has(String(id))) continue;
+    if (detail?.detailVersion !== OPPORTUNITY_DETAIL_VERSION) {
+      staleParser = true;
+      continue;
+    }
+    details[id] = detail;
   }
+  const fetchBudget = staleParser ? MAX_DETAIL_FETCHES_REPARSE : MAX_DETAIL_FETCHES;
   let fetches = 0;
   for (const id of surfaced) {
     const job = byId.get(id);
@@ -257,13 +274,13 @@ async function runJobWatchScanUnlocked(env = process.env, opts = {}) {
     // Ashby embeds the posting on the board listing — no extra HTTP, so it
     // should not consume the Greenhouse/Google detail budget.
     const ashbyInline = source?.type === 'ashby';
-    if (!ashbyInline && fetches >= MAX_DETAIL_FETCHES) break;
+    if (!ashbyInline && fetches >= fetchBudget) break;
     if (!ashbyInline) fetches += 1;
     const detail = await fetchSourceDetail(source, job);
     if (detail) {
       details[id] = {
         ...detail,
-        detailVersion: 2,
+        detailVersion: OPPORTUNITY_DETAIL_VERSION,
         updatedAt: job.updatedAt,
         fetchedAt: now,
       };
@@ -345,13 +362,18 @@ export async function getJobWatchPayload(env = process.env) {
     return 5;
   };
 
-  const detailFor = (id) => (id != null ? state.details?.[String(id)] || null : null);
+  const detailFor = (id, title = '') => {
+    const raw = id != null ? state.details?.[String(id)] || null : null;
+    if (!raw) return null;
+    const type = coerceOpportunityType(raw.type, title);
+    return type && type !== raw.type ? { ...raw, type } : raw;
+  };
   const sources = normalizeSources(config);
 
   const targets = (config.targets || [])
     .map((t) => {
       const match = state.targetMatches?.[t.id] || null;
-      const detail = detailFor(match?.id);
+      const detail = detailFor(match?.id, match?.title || t.label);
       const open = Boolean(match);
       const matchStars = open
         ? Number(match.matchStars ?? scoreToStars(match.assessment?.score))
@@ -411,7 +433,7 @@ export async function getJobWatchPayload(env = process.env) {
     })
     .map((c) => {
       const score = Number(c.matchScore ?? c.assessment?.score ?? 0);
-      const detail = detailFor(c.id);
+      const detail = detailFor(c.id, c.title);
       const locations = Array.isArray(detail?.locations) && detail.locations.length
         ? detail.locations
         : parseLocations(c.location || '');

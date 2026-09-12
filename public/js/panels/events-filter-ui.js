@@ -1,5 +1,5 @@
 /**
- * Shared Events filter widgets: date calendar (click/drag day paint) + attendance.
+ * Shared Events filter widgets: date calendar (click/drag day paint) + attendance + big events.
  */
 
 /**
@@ -476,6 +476,60 @@ export function createAttendanceChecks(opts = {}) {
     setDisabled(disabled) {
       inPerson.disabled = disabled;
       online.disabled = disabled;
+    },
+  };
+}
+
+/**
+ * Show / hide producer festival cards (Burning Man, Climate Week, …).
+ * @param {{
+ *   idPrefix?: string,
+ *   classPrefix?: string,
+ *   showBigEvents?: boolean | null,
+ * }} [opts]
+ * @returns {{
+ *   root: HTMLElement,
+ *   getShowBigEvents: () => boolean,
+ *   setShowBigEvents: (on: boolean | null | undefined) => void,
+ *   setDisabled: (disabled: boolean) => void,
+ * }}
+ */
+export function createBigEventsCheck(opts = {}) {
+  const prefix = opts.classPrefix || 'events-finder';
+  const idPrefix = opts.idPrefix || 'events-finder-big';
+  const id = `${idPrefix}-show`;
+
+  const root = document.createElement('div');
+  root.className = `${prefix}__checkboxes ${prefix}__checkboxes--big-events`;
+  root.setAttribute('role', 'group');
+  root.setAttribute('aria-label', 'Big events');
+
+  const row = document.createElement('label');
+  row.className = `${prefix}__check`;
+  row.htmlFor = id;
+  row.title =
+    'Festivals and once-a-year events such as Burning Man or Climate Week. Uncheck to hide them from the feed.';
+
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.id = id;
+  input.checked = opts.showBigEvents !== false;
+
+  const span = document.createElement('span');
+  span.textContent = 'Show in feed';
+  row.append(input, span);
+  root.append(row);
+
+  return {
+    root,
+    getShowBigEvents() {
+      return input.checked;
+    },
+    setShowBigEvents(on) {
+      input.checked = on !== false;
+    },
+    setDisabled(disabled) {
+      input.disabled = Boolean(disabled);
     },
   };
 }

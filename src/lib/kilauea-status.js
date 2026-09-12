@@ -161,6 +161,122 @@ const MONTH_ABBR = {
   december: 'Dec',
 };
 
+const MONTH_INDEX = {
+  jan: 0,
+  january: 0,
+  feb: 1,
+  february: 1,
+  mar: 2,
+  march: 2,
+  apr: 3,
+  april: 3,
+  may: 4,
+  jun: 5,
+  june: 5,
+  jul: 6,
+  july: 6,
+  aug: 7,
+  august: 7,
+  sep: 8,
+  sept: 8,
+  september: 8,
+  oct: 9,
+  october: 9,
+  nov: 10,
+  november: 10,
+  dec: 11,
+  december: 11,
+};
+
+/** Cue that a dated next-episode window may be nearby. */
+const FORECAST_CUE =
+  /\b(?:forecast(?:ed|ing)?(?:\s+window)?|next\s+(?:(?:lava\s+|high\s+)?(?:fountain(?:ing)?\s+)?)?(?:episode|eruption|eruptive\s+episode)|another\s+episode\s+is\s+likely|episode\s+\d+\s+is\s+likely|likely\s+to\s+(?:begin|start|resume)|expected\s+to\s+(?:begin|start|resume))\b/gi;
+
+/**
+ * HVO often says they cannot model a window yet — that is not a forecast.
+ * @param {string} text
+ */
+function isForecastNotYetModeled(text) {
+  return /\b(?:more\s+(?:tilt\s+)?data\s+(?:are|is)\s+needed|needed\s+to\s+model(?:\s+the)?\s+forecast(?:\s+window)?|(?:cannot|can'?t|unable\s+to)\s+(?:yet\s+)?(?:model|determine|refine|provide)\s+(?:a\s+|the\s+)?forecast|forecast\s+window\s+(?:is\s+)?(?:not\s+yet\s+(?:available|modeled)|unknown|unavailable)|too\s+early\s+to\s+(?:model|forecast))\b/i.test(
+    String(text || ''),
+  );
+}
+
+/**
+ * Drop calendar dates that describe a finished episode, not the next one.
+ * @param {string} text
+ */
+function stripPastEventDateClauses(text) {
+  return String(text || '')
+    .replace(
+      /\b(?:ended|paused|stopped|ceased|concluded|halted)\b[\s\S]{0,90}?\b(?:on|at)\s+[A-Za-z]+\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?/gi,
+      ' ',
+    )
+    .replace(
+      /\b(?:episode|fountaining(?:\s+episode)?)\s+\d+\s+(?:on|of)\s+[A-Za-z]+\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?/gi,
+      ' ',
+    );
+}
+
+/**
+ * @param {Date} [now]
+ * @returns {{ y: number, m: number, d: number }}
+ */
+function honoluluYmd(now = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Pacific/Honolulu',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  return { y: Number(parts.year), m: Number(parts.month) - 1, d: Number(parts.day) };
+}
+
+/**
+ * @param {number} monthIndex
+ * @param {number} day
+ * @param {{ y: number, m: number, d: number }} today
+ */
+function resolveForecastYear(monthIndex, day, today) {
+  const candidate = Date.UTC(today.y, monthIndex, day);
+  const todayUtc = Date.UTC(today.y, today.m, today.d);
+  if (candidate >= todayUtc) return today.y;
+  // Nov/Dec → Jan/Feb is next year; a date a few days ago is historical, not next year.
+  if (today.m >= 10 && monthIndex <= 1) return today.y + 1;
+  return today.y;
+}
+
+/**
+ * True when the compact window (e.g. "Aug 8–14" / "Aug 25") already ended in Hawaiʻi.
+ * @param {string | null} forecastWhen
+ * @param {Date} [now]
+ */
+function forecastWindowIsPast(forecastWhen, now = new Date()) {
+  const s = String(forecastWhen || '').trim();
+  const range = s.match(/^([A-Za-z]{3,}) (\d{1,2})–(?:([A-Za-z]{3,}) )?(\d{1,2})$/);
+  const single = s.match(/^([A-Za-z]{3,}) (\d{1,2})$/);
+  let monthName;
+  let day;
+  if (range) {
+    monthName = range[3] || range[1];
+    day = Number(range[4]);
+  } else if (single) {
+    monthName = single[1];
+    day = Number(single[2]);
+  } else {
+    return false;
+  }
+  const mi = MONTH_INDEX[String(monthName).toLowerCase()];
+  if (mi == null || !Number.isFinite(day)) return false;
+  const today = honoluluYmd(now);
+  const year = resolveForecastYear(mi, day, today);
+  return Date.UTC(year, mi, day) < Date.UTC(today.y, today.m, today.d);
+}
+
 /**
  * @param {string} month
  */
@@ -223,39 +339,28 @@ function extractForecastDateWindow(text) {
  * Only counts as a forecast when concrete dates are present (e.g. Aug 8–14).
  * Matches current HVO phrasing like "current forecast between August 8 and 14"
  * and "forecast window for episode 53 is between August 8 and August 14".
+ * Ignores "needed to model the forecast window" and dates of ended episodes.
  * @param {string} text
+ * @param {Date} [now]
  * @returns {{ hasForecast: boolean, forecast: string | null, forecastWhen: string | null }}
  */
-function parseNextEruptionForecast(text) {
+export function parseNextEruptionForecast(text, now = new Date()) {
   const blob = String(text || '').replace(/\s+/g, ' ').trim();
   if (!blob) return { hasForecast: false, forecast: null, forecastWhen: null };
 
-  const sentences = blob.split(/(?<=[.!?])\s+(?=[A-Z0-9"'])/);
-  const forecastCue =
-    /\b(?:forecast(?:ed|ing)?(?:\s+window)?|next\s+(?:(?:lava\s+|high\s+)?(?:fountain(?:ing)?\s+)?)?(?:episode|eruption|eruptive\s+episode)|another\s+episode\s+is\s+likely|episode\s+\d+\s+is\s+likely|likely\s+to\s+(?:begin|start|resume)|expected\s+to\s+(?:begin|start|resume))\b/i;
-
-  for (const raw of sentences) {
-    const s = raw.trim();
-    if (!s || !forecastCue.test(s)) continue;
-    const forecastWhen = extractForecastDateWindow(s);
-    if (!forecastWhen) continue;
+  FORECAST_CUE.lastIndex = 0;
+  for (const m of blob.matchAll(FORECAST_CUE)) {
+    const cueStart = m.index ?? 0;
+    const cueLen = m[0].length;
+    const slice = blob.slice(Math.max(0, cueStart - 100), Math.min(blob.length, cueStart + cueLen + 220));
+    if (isForecastNotYetModeled(slice)) continue;
+    const forecastWhen = extractForecastDateWindow(stripPastEventDateClauses(slice));
+    if (!forecastWhen || forecastWindowIsPast(forecastWhen, now)) continue;
     return {
       hasForecast: true,
-      forecast: s.replace(/\s+/g, ' ').trim().slice(0, 220),
+      forecast: slice.replace(/\s+/g, ' ').trim().slice(0, 220),
       forecastWhen,
     };
-  }
-
-  // Whole-blob fallback: cue + date window may span sentence boundaries after HTML strip.
-  if (forecastCue.test(blob)) {
-    const forecastWhen = extractForecastDateWindow(blob);
-    if (forecastWhen) {
-      return {
-        hasForecast: true,
-        forecast: blob.slice(0, 220),
-        forecastWhen,
-      };
-    }
   }
 
   return { hasForecast: false, forecast: null, forecastWhen: null };
@@ -267,11 +372,11 @@ function parseNextEruptionForecast(text) {
  */
 function extractKilaueaUpdateText(html) {
   const raw = String(html || '');
-  // Prefer the Volcanic Activity Summary / activity region when present, else whole page.
+  // Require the USGS heading — a bare "activity summary" match hits phone-line boilerplate.
   const region =
+    raw.match(/<(?:h[1-6]|div|section)[^>]*>\s*Volcanic\s+Activity\s+Summary[\s\S]{0,5000}/i)?.[0] ||
     raw.match(/Volcanic\s+Activity\s+Summary[\s\S]{0,4000}/i)?.[0] ||
-    raw.match(/Activity\s+Summary[\s\S]{0,4000}/i)?.[0] ||
-    raw;
+    '';
   return stripHtml(region).slice(0, 6000);
 }
 

@@ -13,6 +13,7 @@ import {
   movePanelTodo,
   renamePanelProject,
   reorderPanelProjects,
+  reorderPanelTodos,
   resolveVikunjaConfig,
   setPanelTodoDone,
   updatePanelProject,
@@ -124,6 +125,23 @@ router.post('/projects/reorder', async (req, res) => {
     const projects = await reorderPanelProjects(req.body?.ids ?? req.body?.order);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, projects });
+  } catch (e) {
+    sendErr(e, res);
+  }
+});
+
+router.post('/todos/reorder', async (req, res) => {
+  try {
+    const projectId = parseProjectId(req.body?.projectId ?? req.body?.project_id);
+    if (projectId == null) {
+      res.status(400).json({ ok: false, error: 'invalid_project' });
+      return;
+    }
+    const items = await reorderPanelTodos(req.body?.ids ?? req.body?.order, process.env, {
+      projectId,
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, items });
   } catch (e) {
     sendErr(e, res);
   }

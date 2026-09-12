@@ -432,6 +432,13 @@ export function mountTasksMobile(root, config = {}) {
   /** @type {number | null} */
   let projectPointerId = null;
   /** @type {string | null} */
+  let draggingTaskId = null;
+  let taskDragMoved = false;
+  /** @type {number | null} */
+  let taskPointerId = null;
+  let taskPointerStartX = 0;
+  let taskPointerStartY = 0;
+  /** @type {string | null} */
   let editTaskId = null;
   /** @type {Array<{ id: number, title: string }>} */
   let allLabels = [];
@@ -559,6 +566,129 @@ export function mountTasksMobile(root, config = {}) {
     projects = next;
     renderProjects();
     void persistMovedProject(fromId);
+  }
+
+  function clearTaskDropIndicators() {
+    detailPane
+      .querySelectorAll(
+        '.mobile-tasks__task--reorder-before, .mobile-tasks__task--reorder-after',
+      )
+      .forEach((el) => {
+        el.classList.remove(
+          'mobile-tasks__task--reorder-before',
+          'mobile-tasks__task--reorder-after',
+        );
+      });
+  }
+
+  /**
+   * @param {string} [_movedId]
+   */
+  async function persistMovedTask(_movedId) {
+    if (projectId == null) return;
+    try {
+      const r = await fetch('/api/vikunja/todos/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, ids: items.map((it) => it.id) }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    } catch {
+      showStatus('Could not save task order.', true);
+    }
+  }
+
+  /**
+   * @param {string} fromId
+   * @param {string} toId
+   * @param {'before' | 'after'} place
+   */
+  function reorderTaskLocal(fromId, toId, place) {
+    if (!fromId || fromId === toId) return;
+    const fromIdx = items.findIndex((it) => it.id === fromId);
+    const toIdx = items.findIndex((it) => it.id === toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = items.slice();
+    const [moved] = next.splice(fromIdx, 1);
+    let insertAt = next.findIndex((it) => it.id === toId);
+    if (insertAt < 0) return;
+    if (place === 'after') insertAt += 1;
+    next.splice(insertAt, 0, moved);
+    items = next;
+    renderDetailShell();
+    void persistMovedTask(fromId);
+  }
+
+  /**
+   * @param {HTMLElement} list
+   */
+  function attachTaskListReorder(list) {
+    list.addEventListener('pointerdown', (e) => {
+      const handle = e.target.closest('.mobile-tasks__task-drag');
+      if (!handle) return;
+      const li = handle.closest('.mobile-tasks__task');
+      if (!li?.dataset.id) return;
+      draggingTaskId = li.dataset.id;
+      taskDragMoved = false;
+      taskPointerId = e.pointerId;
+      taskPointerStartX = e.clientX;
+      taskPointerStartY = e.clientY;
+      li.classList.add('mobile-tasks__task--dragging');
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+
+    list.addEventListener('pointermove', (e) => {
+      if (draggingTaskId == null || e.pointerId !== taskPointerId) return;
+      if (!taskDragMoved) {
+        const dist = Math.hypot(e.clientX - taskPointerStartX, e.clientY - taskPointerStartY);
+        if (dist <= LONG_PRESS_MOVE_PX) return;
+        taskDragMoved = true;
+      }
+      const target = document
+        .elementFromPoint(e.clientX, e.clientY)
+        ?.closest('.mobile-tasks__task');
+      clearTaskDropIndicators();
+      if (
+        target instanceof HTMLElement &&
+        target.dataset.id &&
+        target.dataset.id !== draggingTaskId
+      ) {
+        const rect = target.getBoundingClientRect();
+        const before = e.clientY < rect.top + rect.height / 2;
+        target.classList.add(
+          before ? 'mobile-tasks__task--reorder-before' : 'mobile-tasks__task--reorder-after',
+        );
+      }
+    });
+
+    function finishTaskPointerDrag(e) {
+      if (draggingTaskId == null || e.pointerId !== taskPointerId) return;
+      const fromId = draggingTaskId;
+      const moved = taskDragMoved;
+      const target = document
+        .elementFromPoint(e.clientX, e.clientY)
+        ?.closest('.mobile-tasks__task');
+      clearTaskDropIndicators();
+      list.querySelectorAll('.mobile-tasks__task--dragging').forEach((el) => {
+        el.classList.remove('mobile-tasks__task--dragging');
+      });
+      draggingTaskId = null;
+      taskPointerId = null;
+      taskDragMoved = false;
+      if (!moved) {
+        showMoveOverlay(fromId);
+        return;
+      }
+      if (target instanceof HTMLElement && target.dataset.id && target.dataset.id !== fromId) {
+        const rect = target.getBoundingClientRect();
+        const place = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+        reorderTaskLocal(fromId, target.dataset.id, place);
+      }
+    }
+
+    list.addEventListener('pointerup', finishTaskPointerDrag);
+    list.addEventListener('pointercancel', finishTaskPointerDrag);
   }
 
   /**
@@ -1248,6 +1378,7 @@ export function mountTasksMobile(root, config = {}) {
     for (const item of items) {
       list.append(renderTask(item));
     }
+    attachTaskListReorder(list);
   }
 
   /**
@@ -1365,12 +1496,7 @@ export function mountTasksMobile(root, config = {}) {
 
     const canDrag = !item.done && !pendingDone.has(item.id);
     if (canDrag) {
-      const handle = makeDragHandle('mobile-tasks__task-drag', 'Edit task');
-      handle.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        showMoveOverlay(item.id);
-      });
+      const handle = makeDragHandle('mobile-tasks__task-drag', 'Drag to reorder · tap to edit');
       row.append(handle);
     }
 
@@ -1594,7 +1720,13 @@ export function mountTasksMobile(root, config = {}) {
                   })
                   .filter(Boolean)
               : [];
-            return { id, text, done: Boolean(it.done), subtasks };
+            return {
+              id,
+              text,
+              done: Boolean(it.done),
+              position: Number.isFinite(Number(it.position)) ? Number(it.position) : 0,
+              subtasks,
+            };
           })
           .filter(Boolean)
       : [];
@@ -1621,6 +1753,7 @@ export function mountTasksMobile(root, config = {}) {
         id: String(j.item.id),
         text: String(j.item.text).trim(),
         done: false,
+        position: Number.isFinite(Number(j.item.position)) ? Number(j.item.position) : 0,
         subtasks: [],
       });
       renderDetailShell();
@@ -1859,7 +1992,7 @@ export function mountTasksMobile(root, config = {}) {
   }
 
   attachPullToRefresh(root, async () => {
-    if (draggingProjectId != null || !moveOverlay.hidden) {
+    if (draggingProjectId != null || draggingTaskId != null || !moveOverlay.hidden) {
       return;
     }
     if (view === 'detail') await refreshTodos();

@@ -3,6 +3,7 @@
  */
 import { Router } from 'express';
 import express from 'express';
+import { createReadStream } from 'node:fs';
 import {
   bulkKeepNotesAction,
   clearKeepNoteAttachment,
@@ -10,9 +11,9 @@ import {
   deleteKeepNote,
   getKeepNote,
   KEEP_NOTES_ROOT,
+  keepNoteAttachmentFile,
   listKeepNoteCategories,
   listKeepNotes,
-  readKeepNoteAttachment,
   rememberKeepNoteCategory,
   reorderKeepNotes,
   setKeepNoteAttachment,
@@ -77,11 +78,13 @@ router.post('/import', async (req, res) => {
   }
 });
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const notes = await listKeepNotes();
+    const archivedQ = String(req.query?.archived || '').trim().toLowerCase();
+    const archived = archivedQ === '1' || archivedQ === 'true';
+    const notes = await listKeepNotes(process.env, { archived });
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ ok: true, notes });
+    res.json({ ok: true, notes, archived });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -237,13 +240,31 @@ router.delete('/:id/attachment', async (req, res) => {
 
 router.get('/:id/attachment/:filename', async (req, res) => {
   try {
-    const { buf, mimeType } = await readKeepNoteAttachment(
+    const file = await keepNoteAttachmentFile(
       String(req.params.id || ''),
       String(req.params.filename || ''),
     );
+    const total = file.size;
     res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('Content-Type', mimeType);
-    res.send(buf);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Accept-Ranges', 'bytes');
+    const rangeHeader = String(req.headers.range || '');
+    const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+    if (m) {
+      const start = m[1] ? Number(m[1]) : 0;
+      const end = m[2] ? Number(m[2]) : total - 1;
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end >= total || start > end) {
+        res.status(416).setHeader('Content-Range', `bytes */${total}`).end();
+        return;
+      }
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      res.setHeader('Content-Length', String(end - start + 1));
+      createReadStream(file.path, { start, end }).pipe(res);
+      return;
+    }
+    res.setHeader('Content-Length', String(total));
+    createReadStream(file.path).pipe(res);
   } catch (e) {
     const code = String(e?.code || '');
     res.status(code === 'not_found' ? 404 : 500).json({

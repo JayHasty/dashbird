@@ -120,6 +120,7 @@ data/gmail-weekly-summary-criteria.json
 data/googlekeeptodolist.txt
 data/task-project-locations.md
 data/task-random-meta.json
+data/task-list-order.json
 data/tg-sync-payload.json
 data/events-finder-email-platforms.json
 data/events-finder-producer-mail-seen.json
