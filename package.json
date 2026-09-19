@@ -33,6 +33,6 @@
     "playwright": "1.52.0",
     "postal-mime": "^2.4.3",
     "rrule": "^2.8.1",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.4"
   }
 }
