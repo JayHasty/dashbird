@@ -31,7 +31,7 @@
     "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
     "playwright": "1.52.0",
-    "postal-mime": "^2.4.3",
+    "postal-mime": "^3.0.0",
     "rrule": "^2.8.1",
     "sharp": "^0.34.5"
   }
