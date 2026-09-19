@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright:v1.52.0-jammy
+FROM mcr.microsoft.com/playwright:v1.63.0-jammy
 WORKDIR /app
 RUN apt-get update \
   && apt-get install -y --no-install-recommends xdg-utils \
