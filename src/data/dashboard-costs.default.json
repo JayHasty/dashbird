@@ -38,12 +38,12 @@
     {
       "id": "openrouter",
       "label": "OpenRouter",
-      "usedFor": "AI (Daily Summary, enrich, Tool Library)",
+      "usedFor": "AI (Daily Summary, enrich, Tool Library, Now inbox)",
       "category": "AI features",
       "cadence": "usage",
       "weeklyUsd": 0,
       "monthlyBudgetUsd": 5,
-      "notes": "Usage billed to your OpenRouter key \u00b7 free-first models when possible",
+      "notes": "Usage billed to your OpenRouter key \u00b7 free-first models when possible \u00b7 Now inbox sort uses this key",
       "measuredSource": "openrouter-key",
       "active": true
     }

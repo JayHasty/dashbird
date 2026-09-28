@@ -104,6 +104,7 @@ import devicePlaceRouter from './routes/device-place.js';
 import awayBaseRouter from './routes/away-base.js';
 import keepNotesRouter from './routes/keep-notes.js';
 import dailyScratchRouter from './routes/daily-scratch.js';
+import nowRouter from './routes/now.js';
 import bookmarksRouter from './routes/bookmarks.js';
 import devAgentLogRouter from './routes/dev-agent-log.js';
 import trustedDeviceAuthRouter, {
@@ -224,6 +225,7 @@ app.use('/api/device-place', devicePlaceRouter);
 app.use('/api/away-base', awayBaseRouter);
 app.use('/api/keep-notes', keepNotesRouter);
 app.use('/api/daily-scratch', dailyScratchRouter);
+app.use('/api/now', nowRouter);
 app.use('/api/bookmarks', bookmarksRouter);
 app.use('/api/dev-agent-log', devAgentLogRouter);
 

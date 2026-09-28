@@ -52,19 +52,30 @@ function renderTopbarContext(el, place) {
 let settingsLoaded = false;
 let houseHunterLoaded = false;
 let networkLoaded = false;
+let nowLoaded = false;
 
-/** @param {'main' | 'network' | 'house-hunter' | 'settings'} page */
+/** @param {'main' | 'now' | 'network' | 'house-hunter' | 'settings'} page */
 function showPage(page) {
   const main = document.getElementById('page-main');
+  const now = document.getElementById('page-now');
   const settings = document.getElementById('page-settings');
   const houseHunter = document.getElementById('page-house-hunter');
   const network = document.getElementById('page-network');
   const mobile = document.getElementById('page-mobile');
   if (main) main.hidden = page !== 'main';
+  if (now) now.hidden = page !== 'now';
   if (settings) settings.hidden = page !== 'settings';
   if (houseHunter) houseHunter.hidden = page !== 'house-hunter';
   if (network) network.hidden = page !== 'network';
   if (mobile) mobile.hidden = true;
+  if (page === 'now' && !nowLoaded) {
+    nowLoaded = true;
+    import('./panels/now.js')
+      .then(({ mountNow }) => {
+        mountNow(document.getElementById('mount-now'));
+      })
+      .catch((e) => console.error('Now mount failed:', e));
+  }
   if (page === 'settings' && !settingsLoaded) {
     settingsLoaded = true;
     void import('./panels/settings-page.js').then(({ mountSettingsPage }) => {
