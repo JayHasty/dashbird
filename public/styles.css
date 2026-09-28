@@ -9863,7 +9863,8 @@ body.dashy--page-now .page-view--main,
 body.dashy--page-now .page-view--settings,
 body.dashy--page-now .page-view--house-hunter,
 body.dashy--page-now .page-view--network,
-body.dashy--page-now .page-view--mobile {
+body.dashy--page-now .page-view--mobile,
+body.dashy--page-now #dashbird-daily-scratch {
   display: none;
 }
 
