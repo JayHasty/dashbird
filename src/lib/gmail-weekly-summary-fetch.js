@@ -138,7 +138,7 @@ export async function fetchWeeklyMailboxMessages(email, env = process.env, opts 
     Math.max(Number(opts.maxMessages) || DEFAULT_MAX_PER_MAILBOX, 1),
     80,
   );
-  const days = Math.min(Math.max(Number(opts.days) || gmailWeeklySummaryDays(env), 1), 21);
+  const days = Math.min(Math.max(Number(opts.days) || gmailWeeklySummaryDays(env), 1), 180);
   const query = String(opts.query || gmailWeeklySummaryQuery(env)).trim() || `newer_than:${days}d`;
 
   const appPassword = gmailAppPasswordFor(address, env);

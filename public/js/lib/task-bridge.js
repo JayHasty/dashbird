@@ -4,6 +4,8 @@ const PROJECT_LS_KEY = 'dashbird-tasks-project-id';
 const TASK_CREATED_EVENT = 'dashbird:task-created';
 const CONTACT_TASK_DONE_EVENT = 'dashbird:contact-task-done';
 const CONTACT_TASKS_CHANGED_EVENT = 'dashbird:contact-tasks-changed';
+const PROJECTS_CHANGED_EVENT = 'dashbird:projects-changed';
+const SELECT_PROJECT_EVENT = 'dashbird:select-project';
 
 export const CONTACT_TASKS_PROJECT_TITLE = 'Friend Tasks';
 export const LEGACY_CONTACT_TASKS_PROJECT_TITLE = 'Contact Tasks';
@@ -103,4 +105,45 @@ export function onContactTasksChanged(handler) {
   const listener = () => handler();
   document.addEventListener(CONTACT_TASKS_CHANGED_EVENT, listener);
   return () => document.removeEventListener(CONTACT_TASKS_CHANGED_EVENT, listener);
+}
+
+/**
+ * Vikunja projects were created/renamed outside the Tasks panel (trip prep, etc.).
+ */
+export function notifyProjectsChanged() {
+  document.dispatchEvent(new CustomEvent(PROJECTS_CHANGED_EVENT));
+}
+
+/**
+ * @param {() => void} handler
+ * @returns {() => void}
+ */
+export function onProjectsChanged(handler) {
+  const listener = () => handler();
+  document.addEventListener(PROJECTS_CHANGED_EVENT, listener);
+  return () => document.removeEventListener(PROJECTS_CHANGED_EVENT, listener);
+}
+
+/**
+ * Open a project in the Tasks panel.
+ * @param {number} projectId
+ */
+export function notifySelectProject(projectId) {
+  const id = Number(projectId);
+  if (!Number.isFinite(id) || id <= 0) return;
+  document.dispatchEvent(new CustomEvent(SELECT_PROJECT_EVENT, { detail: { projectId: id } }));
+}
+
+/**
+ * @param {(projectId: number) => void} handler
+ * @returns {() => void}
+ */
+export function onSelectProject(handler) {
+  /** @param {Event} e */
+  const listener = (e) => {
+    const id = Number(/** @type {CustomEvent<{ projectId?: number }>} */ (e).detail?.projectId);
+    if (Number.isFinite(id) && id > 0) handler(id);
+  };
+  document.addEventListener(SELECT_PROJECT_EVENT, listener);
+  return () => document.removeEventListener(SELECT_PROJECT_EVENT, listener);
 }

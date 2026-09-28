@@ -13,6 +13,7 @@ import { assertPublicHttpUrl } from './public-http-url.js';
 import { dataBackupLocalParts } from './data-backup-schedule.js';
 import {
   daysUntilEventStart,
+  fetchNwsAlerts,
   resolveLogisticsLatLon,
 } from './events-finder-travel-logistics.js';
 import { loadConferenceWatchlistStore } from './events-finder-conference-watchlist-store.js';
@@ -334,45 +335,6 @@ async function searchHits(query, limit, env) {
 }
 
 /**
- * @param {number} lat
- * @param {number} lon
- * @param {NodeJS.ProcessEnv} [env]
- * @returns {Promise<TravelBriefRecord['nwsAlerts']>}
- */
-async function fetchNwsAlerts(lat, lon, env = process.env) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return [];
-  // NWS covers US territories only.
-  if (lat < 15 || lat > 72 || lon < -180 || lon > -60) return [];
-  const ua =
-    String(env.NWS_USER_AGENT || '').trim()
-    || 'Dashbird/1.0 (dashbird dashboard; events travel brief)';
-  try {
-    const url = `https://api.weather.gov/alerts/active?point=${encodeURIComponent(`${lat},${lon}`)}`;
-    const r = await fetch(url, {
-      headers: { 'User-Agent': ua, Accept: 'application/geo+json' },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!r.ok) return [];
-    const j = await r.json();
-    const features = Array.isArray(j?.features) ? j.features : [];
-    /** @type {TravelBriefRecord['nwsAlerts']} */
-    const out = [];
-    for (const f of features.slice(0, 8)) {
-      const p = f?.properties || {};
-      const event = String(p.event || '').trim();
-      if (!event) continue;
-      out.push({
-        event: event.slice(0, 120),
-        headline: String(p.headline || '').trim().slice(0, 280),
-      });
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
-/**
  * @param {string} city
  * @param {string | null} startYmd
  * @param {string | null} endYmd
@@ -389,18 +351,21 @@ function researchQueries(city, startYmd, endYmd) {
     `${place} wildfire smoke OR air quality OR weather advisory`,
     `${place} protest OR demonstration OR civil unrest OR election`,
     `${place} transit strike OR airport delay OR travel disruption`,
+    `${place} festival OR concert OR marathon OR summit OR "super bowl" OR parade ${when}`,
+    `${place} road construction OR street closure OR major construction ${when}`,
   ];
 }
 
 const SYSTEM_PROMPT = `You write a practical travel brief for someone visiting a city for an event.
 Focus only on things that affect travel, safety, comfort, or packing around the event dates.
 Prioritize: power/utility outages, drinking-water advisories, weather alerts, wildfire smoke / air quality,
-civil unrest or local tension, elections or large demonstrations, transit/airport disruptions, health alerts.
+civil unrest or local tension, elections or large demonstrations, transit/airport disruptions, health alerts,
+large festivals / sports / global summits that crowd hotels or close streets, major construction.
 Ignore sports scores, celebrity gossip, and unrelated national politics unless they create local disruption.
 Reply JSON only:
 {
   "summary": "2-4 sentences on what the area is going through relevant to a visitor",
-  "items": [{"title":"...","detail":"...","category":"power|water|weather|smoke|unrest|election|transit|health|other","packingHint":"optional short tip or null"}],
+  "items": [{"title":"...","detail":"...","category":"power|water|weather|smoke|unrest|election|transit|health|festival|construction|summit|other","packingHint":"optional short tip or null"}],
   "packingTips": ["short actionable packing or prep tips"],
   "sources": [{"title":"...","url":"https://..."}]
 }

@@ -27,6 +27,10 @@ import {
   saveGmailWeeklySummary,
   shouldExcludeDailySummaryItem,
 } from './gmail-weekly-summary-store.js';
+import {
+  extremeItemsFromMessages,
+  itemIsExtremePriority,
+} from './gmail-extreme-priority.js';
 
 const MAX_MESSAGES_FOR_PROMPT = 48;
 const EXCERPT_CAP = 700;
@@ -401,6 +405,14 @@ function mapSynthItems(parsed, messages, guideMarkdown = '') {
       needsReply,
       deadline,
       deadlineSource,
+      priority: itemIsExtremePriority({
+        title,
+        company,
+        detail,
+        sources: newestSources,
+      })
+        ? 'extreme'
+        : null,
       mailboxes: [...new Set(newestSources.map((s) => s.email))],
       sources: newestSources,
     };
@@ -539,7 +551,10 @@ export async function runGmailWeeklySummaryScan(env = process.env, opts = {}) {
     }
 
     // mapSynthItems still applies guide-match / event / OTP hard excludes (authoritative).
-    const items = mapSynthItems(parsed, mail.messages, guide);
+    const items = [
+      ...mapSynthItems(parsed, mail.messages, guide),
+      ...extremeItemsFromMessages(mail.messages),
+    ];
     const prev = await loadGmailWeeklySummary(env);
     const merged = mergeSynthesizedDigest(
       prev,

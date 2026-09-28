@@ -18,6 +18,8 @@ import {
   isFriendTasksProjectTitle,
   notifyContactTaskDone,
   onContactTasksChanged,
+  onProjectsChanged,
+  onSelectProject,
   onTaskCreated,
 } from '../lib/task-bridge.js';
 import { TASKS_LABELS } from '../lib/network-labels.js';
@@ -2058,6 +2060,12 @@ export function mountTasks(root, config = {}) {
   onTaskCreated(ingestExternalTask);
   onContactTasksChanged(() => {
     void refreshContactTasksMirror();
+  });
+  onProjectsChanged(() => {
+    void refreshContactTasksMirror();
+  });
+  onSelectProject((id) => {
+    selectProject(id);
   });
 
   async function refreshContactTasksMirror() {

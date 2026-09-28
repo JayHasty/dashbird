@@ -12,6 +12,10 @@ import {
   notifyTaskCreated,
   readTasksProjectId,
 } from '../lib/task-bridge.js';
+import {
+  alertNewExtremeMail,
+  itemIsExtremePriority,
+} from '../lib/extreme-mail-alert.js';
 
 const CACHE_KEY = 'gmail-daily-summary';
 const CACHE_MAX_MS = 6 * 60 * 60 * 1000;
@@ -42,7 +46,7 @@ function writeCollapsed(collapsed) {
 /**
  * Wire card heading collapse (body hide/show).
  * @param {HTMLElement} root
- * @returns {{ setUrgency: (level: 'high' | 'med' | 'low' | null) => void }}
+ * @returns {{ setUrgency: (level: 'extreme' | 'high' | 'med' | 'low' | null) => void }}
  */
 function wireCardChrome(root) {
   const card = root.closest('.sky-sidebar__card--daily-summary');
@@ -63,7 +67,7 @@ function wireCardChrome(root) {
   }
 
   /**
-   * @param {'high' | 'med' | 'low' | null} level
+   * @param {'extreme' | 'high' | 'med' | 'low' | null} level
    */
   const setUrgency = (level) => {
     if (!urgencyEl) return;
@@ -78,7 +82,8 @@ function wireCardChrome(root) {
     urgencyEl.className = `daily-summary__card-urgency daily-summary__urgency daily-summary__urgency--${level}`;
     urgencyEl.title = urgencyLabel(level);
     urgencyEl.setAttribute('aria-label', urgencyLabel(level));
-    urgencyEl.textContent = level === 'high' ? '▲' : level === 'med' ? '●' : '▽';
+    urgencyEl.textContent =
+      level === 'extreme' ? '◆' : level === 'high' ? '▲' : level === 'med' ? '●' : '▽';
   };
 
   if (card && btn instanceof HTMLButtonElement) {
@@ -107,11 +112,12 @@ function wireCardChrome(root) {
  */
 function maxUrgency(list) {
   if (!Array.isArray(list) || !list.length) return null;
-  let worst = /** @type {'high' | 'med' | 'low'} */ ('low');
+  let worst = /** @type {'extreme' | 'high' | 'med' | 'low'} */ ('low');
   for (const item of list) {
     const u = itemUrgency(item);
-    if (u === 'high') return 'high';
-    if (u === 'med') worst = 'med';
+    if (u === 'extreme') return 'extreme';
+    if (u === 'high') worst = worst === 'extreme' ? 'extreme' : 'high';
+    else if (u === 'med' && worst === 'low') worst = 'med';
   }
   return worst;
 }
@@ -189,6 +195,7 @@ function formatDeadline(iso) {
  * @returns {'high' | 'med' | 'low'}
  */
 function itemUrgency(item, nowMs = Date.now()) {
+  if (itemIsExtremePriority(item)) return 'extreme';
   const dueMs = Date.parse(String(item?.deadline || ''));
   if (Number.isFinite(dueMs)) {
     const hours = (dueMs - nowMs) / (60 * 60 * 1000);
@@ -203,6 +210,7 @@ function itemUrgency(item, nowMs = Date.now()) {
  * @param {'high' | 'med' | 'low'} level
  */
 function urgencyLabel(level) {
+  if (level === 'extreme') return 'Extreme priority';
   if (level === 'high') return 'High urgency';
   if (level === 'med') return 'Medium urgency';
   return 'Low urgency';
@@ -235,7 +243,8 @@ function makeUrgencyIcon(level) {
   el.title = urgencyLabel(level);
   el.setAttribute('aria-label', urgencyLabel(level));
   el.setAttribute('role', 'img');
-  el.textContent = level === 'high' ? '▲' : level === 'med' ? '●' : '▽';
+  el.textContent =
+    level === 'extreme' ? '◆' : level === 'high' ? '▲' : level === 'med' ? '●' : '▽';
   return el;
 }
 
@@ -543,6 +552,7 @@ export function mountDailySummary(root) {
     summaryText = String(payload?.summaryText || '').trim();
     items = Array.isArray(payload?.items) ? payload.items : [];
     renderList();
+    alertNewExtremeMail(items);
     if (payload?.lastError) {
       showStatus(String(payload.lastError), true);
     } else {
@@ -835,7 +845,12 @@ export function mountDailySummary(root) {
 
   function renderList() {
     list.replaceChildren();
-    chrome.setUrgency(maxUrgency(items));
+    const urgency = maxUrgency(items);
+    chrome.setUrgency(urgency);
+    const card = root.closest('.sky-sidebar__card--daily-summary');
+    if (card) {
+      card.classList.toggle('sky-sidebar__card--extreme', urgency === 'extreme');
+    }
     if (!items.length) {
       const empty = document.createElement('li');
       empty.className = 'daily-summary__empty';
@@ -897,4 +912,7 @@ export function mountDailySummary(root) {
   const cached = readPanelCache(CACHE_KEY, CACHE_MAX_MS);
   if (cached) applyPayload(cached);
   void load(false);
+  window.setInterval(() => {
+    void load(false);
+  }, 60_000);
 }

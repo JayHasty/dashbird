@@ -6,6 +6,7 @@
 import { openRouterChatJson } from './openrouter-chat-json.js';
 import { parseGuideSections } from './gmail-daily-summary-guide-match.js';
 import { loadRecentThumbsDownExamples } from './gmail-daily-summary-guide-feedback.js';
+import { isExtremePriorityMail } from './gmail-extreme-priority.js';
 
 /** @typedef {'action' | 'waiting' | 'money_docs' | 'scheduling' | 'fyi' | 'event' | 'noise'} TriageCategory */
 
@@ -113,6 +114,13 @@ export function heuristicTriageMessage(msg) {
       category: /** @type {TriageCategory} */ ('noise'),
       importance: 0.05,
       why: 'blocked sender domain (@westernp.com)',
+    };
+  }
+  if (isExtremePriorityMail(msg)) {
+    return {
+      category: /** @type {TriageCategory} */ ('action'),
+      importance: 1,
+      why: 'extreme: Anthropic application',
     };
   }
 

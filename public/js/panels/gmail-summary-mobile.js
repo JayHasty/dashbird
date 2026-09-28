@@ -11,6 +11,10 @@ import {
   notifyTaskCreated,
   readTasksProjectId,
 } from '../lib/task-bridge.js';
+import {
+  alertNewExtremeMail,
+  itemIsExtremePriority,
+} from '../lib/extreme-mail-alert.js';
 
 const CACHE_KEY = 'gmail-daily-summary';
 const CACHE_MAX_MS = 6 * 60 * 60 * 1000;
@@ -95,6 +99,7 @@ function formatDeadline(iso) {
  * @returns {'high' | 'med' | 'low'}
  */
 function itemUrgency(item, nowMs = Date.now()) {
+  if (itemIsExtremePriority(item)) return 'extreme';
   const dueMs = Date.parse(String(item?.deadline || ''));
   if (Number.isFinite(dueMs)) {
     const hours = (dueMs - nowMs) / (60 * 60 * 1000);
@@ -443,6 +448,7 @@ export function mountGmailSummaryMobile(root) {
     summaryText = String(payload?.summaryText || '').trim();
     items = Array.isArray(payload?.items) ? payload.items : [];
     renderList();
+    alertNewExtremeMail(items);
     if (payload?.lastError) showStatus(String(payload.lastError), true);
     else if (!status.textContent) showStatus('');
   }
@@ -764,4 +770,7 @@ export function mountGmailSummaryMobile(root) {
   const cached = readPanelCache(CACHE_KEY, CACHE_MAX_MS);
   if (cached) applyPayload(cached);
   void load(false);
+  window.setInterval(() => {
+    void load(false);
+  }, 60_000);
 }

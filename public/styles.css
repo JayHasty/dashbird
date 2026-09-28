@@ -1369,6 +1369,86 @@ body.dashy--deferred-ready .boot-deferred {
   min-height: 0;
 }
 
+.events-finder__logistics-side-rail--region {
+  flex: 0 0 38%;
+  width: 38%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.85rem 0.9rem 1.1rem;
+}
+
+.events-finder__logistics-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.events-finder__logistics-box-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.65rem;
+}
+
+.events-finder__logistics-box-head .events-finder__notable-subtitle {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.events-finder__logistics-box-hint {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.events-finder__logistics-box-ta {
+  min-height: 6.5rem;
+  resize: vertical;
+}
+
+.events-finder__logistics-scrape,
+.events-finder__logistics-tasks-link {
+  appearance: none;
+  border: 1px solid rgba(255, 210, 140, 0.35);
+  background: rgba(255, 210, 140, 0.1);
+  color: #ffd28c;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 650;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.events-finder__logistics-scrape:hover,
+.events-finder__logistics-scrape:focus-visible,
+.events-finder__logistics-tasks-link:hover,
+.events-finder__logistics-tasks-link:focus-visible {
+  background: rgba(255, 210, 140, 0.2);
+  border-color: rgba(255, 210, 140, 0.55);
+}
+
+.events-finder__logistics-scrape:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.events-finder__logistics-region {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.events-finder__logistics-region-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.events-finder__logistics-region-section .events-finder__notable-subtitle {
+  margin: 0;
+}
+
 .events-finder__logistics-rail-tabs {
   flex: 0 0 auto;
   display: flex;
@@ -1570,7 +1650,8 @@ body.dashy--deferred-ready .boot-deferred {
     flex-direction: column;
   }
 
-  .events-finder__logistics-side-rail {
+  .events-finder__logistics-side-rail,
+  .events-finder__logistics-side-rail--region {
     flex: 0 0 auto;
     width: 100%;
     max-width: none;
@@ -4063,6 +4144,15 @@ html.sky-sidebar-hidden .sky-sidebar-toggle {
   flex: 0 0 auto;
   width: 1.05rem;
   font-size: 0.7rem;
+}
+
+.sky-sidebar__card--daily-summary.sky-sidebar__card--extreme > .sky-sidebar__card-bar--daily-summary {
+  background: #c026d3;
+  color: #fff;
+}
+
+.sky-sidebar__card--daily-summary.sky-sidebar__card--extreme > .sky-sidebar__card-bar--daily-summary > .sky-sidebar__card-heading {
+  color: #fff;
 }
 
 .sky-sidebar__card--daily-summary.panel--glass > .sky-sidebar__card-bar--daily-summary > .sky-sidebar__card-heading {
@@ -7870,6 +7960,12 @@ html.dashbird-view-mobile .page-view--mobile:not([hidden]) {
   background: rgba(255, 255, 255, 0.03);
   padding: 0.65rem 0.75rem 0.7rem;
   box-shadow: inset 3px 0 0 rgba(126, 200, 255, 0.35);
+}
+
+.mobile-mail__card--urgency-extreme {
+  border-color: #d946ef;
+  background: rgba(192, 38, 211, 0.18);
+  box-shadow: inset 4px 0 0 #d946ef;
 }
 
 .mobile-mail__card--urgency-high {
@@ -13976,6 +14072,12 @@ button.network-crm__person-name--link:hover {
   overflow: hidden;
 }
 
+.daily-summary__card--urgency-extreme {
+  border-color: #d946ef;
+  background: rgba(192, 38, 211, 0.18);
+  box-shadow: inset 4px 0 0 #d946ef;
+}
+
 .daily-summary__card--urgency-high {
   box-shadow: inset 3px 0 0 #f87171;
 }
@@ -14263,6 +14365,10 @@ button.network-crm__person-name--link:hover {
   font-weight: 700;
   letter-spacing: 0;
   user-select: none;
+}
+
+.daily-summary__urgency--extreme {
+  color: #c026d3;
 }
 
 .daily-summary__urgency--high {
@@ -22732,3 +22838,93 @@ a.job-watch__label:hover {
 .job-watch__modal-link {
   text-decoration: none;
 }
+
+.extreme-mail-alert {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 1.25rem;
+}
+
+.extreme-mail-alert__panel {
+  width: min(28rem, 100%);
+  padding: 1.1rem 1.15rem 1rem;
+  border: 2px solid #d946ef;
+  background: #2a1033;
+  color: #f8e8ff;
+}
+
+.extreme-mail-alert__kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #e879f9;
+}
+
+.extreme-mail-alert__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.extreme-mail-alert__company,
+.extreme-mail-alert__detail {
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.extreme-mail-alert__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.extreme-mail-alert__btn {
+  border: 1px solid #e879f9;
+  background: #c026d3;
+  color: #fff;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.extreme-mail-alert__btn--open {
+  background: transparent;
+  color: #f0abfc;
+}
+
+.events-finder__tag--anthropic,
+.events-finder__tag--logistics {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.events-finder__tag--anthropic {
+  background: #c026d3;
+  color: #fff;
+}
+
+.events-finder__tag--logistics {
+  border: 1px solid rgba(232, 121, 249, 0.7);
+  color: #f0abfc;
+}
+
+.events-finder__anth-notes {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  color: var(--muted, #9aa3b2);
+}
+

@@ -75,6 +75,7 @@ function publicItem(item, primary = null) {
     deadline: item.deadline,
     deadlineSource: item.deadlineSource,
     needsReply: item.needsReply,
+    priority: item.priority || null,
     mailboxes: item.mailboxes,
     sources: item.sources,
     replyUrl: gmailReplyUrl(src),

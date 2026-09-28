@@ -55,6 +55,11 @@ import {
   applyNotableToEvent,
 } from '../lib/events-finder-notable-store.js';
 import { geocodeAddress } from '../lib/geocode-address.js';
+import {
+  hydrateTripPrepFromVikunja,
+  syncTripPrepToVikunja,
+} from '../lib/trip-prep-vikunja-sync.js';
+import { scrapeTripReservations } from '../lib/events-finder-reservation-scrape.js';
 
 const router = Router();
 router.use(express.json({ limit: '256kb' }));
@@ -370,6 +375,7 @@ router.get('/:slug/logistics', async (req, res) => {
       getLogisticsModule('big', slug, 'transportation', process.env),
       getLogisticsModule('big', slug, 'accommodations', process.env),
     ]);
+    logistics.tripPlanning = await hydrateTripPrepFromVikunja(logistics.tripPlanning);
     const travelBriefPack = await ensureTravelBriefForLogistics(
       {
         kind: 'big',
@@ -492,6 +498,40 @@ router.post('/:slug/travel-brief', async (req, res) => {
     );
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, travelBrief: publicTravelBrief(brief) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /:slug/reservation-scrape — pull flight/hotel/bus confirmations from Gmail.
+ */
+router.post('/:slug/reservation-scrape', async (req, res) => {
+  try {
+    const slug = slugFromQuery(String(req.params.slug || ''));
+    if (!slug) {
+      res.status(400).json({ ok: false, error: 'invalid_slug' });
+      return;
+    }
+    const store = await loadConferenceWatchlistStore(process.env);
+    const rec = store.bySlug[slug];
+    if (!rec) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    const item = conferenceRecordToWatchItem(rec, new Date());
+    const scraped = await scrapeTripReservations(
+      {
+        title: item.title,
+        city: item.city,
+        start: item.start,
+        end: item.end,
+        venue: item.venue,
+      },
+      process.env,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: scraped.ok, ...scraped });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -737,7 +777,31 @@ router.patch('/:slug', async (req, res) => {
       if (key !== 'planningNotes') metaEdited = true;
     }
     if (Object.prototype.hasOwnProperty.call(body, 'tripPlanning')) {
-      const tp = normalizeTripPlanning(body.tripPlanning, rec.planningNotes);
+      const incoming =
+        body.tripPlanning && typeof body.tripPlanning === 'object'
+          ? /** @type {Record<string, unknown>} */ (body.tripPlanning)
+          : {};
+      const existingTp = rec.tripPlanning || {};
+      let tp = normalizeTripPlanning(
+        {
+          ...incoming,
+          vikunjaProjectId: incoming.vikunjaProjectId ?? existingTp.vikunjaProjectId,
+          beforeTripTasks:
+            Array.isArray(incoming.beforeTripTasks) && incoming.beforeTripTasks.length
+              ? incoming.beforeTripTasks
+              : existingTp.beforeTripTasks,
+        },
+        rec.planningNotes,
+      );
+      try {
+        tp = await syncTripPrepToVikunja(tp, {
+          title: rec.name || rec.query,
+          start: rec.eventStart,
+          lockKey: `big:${slug}`,
+        });
+      } catch (e) {
+        console.warn('[trip-prep] vikunja sync failed', String(e?.message || e).slice(0, 160));
+      }
       patch.tripPlanning = tp;
       patch.planningNotes = tripPlanningToLegacyNotes(tp);
     }

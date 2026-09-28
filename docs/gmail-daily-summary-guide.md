@@ -20,6 +20,7 @@ Scans **intake** + **your-gmail** every ~30 minutes (rolling 10-day window).
 
 Create action items when mail matches any of these patterns:
 
+- Anthropic recruiting / Greenhouse application mail (Manager, Customer Success — Beneficial Deployments). Extreme priority. Not weekly “New Jobs at Anthropic” alerts.
 - Deadlines I own or need to meet
 - Scheduling that needs a yes/no from me
 - Money, contracts, or docs to sign

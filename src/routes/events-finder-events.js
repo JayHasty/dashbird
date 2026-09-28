@@ -47,6 +47,7 @@ import {
   eventMatchesGoogleCalendar,
   loadGoogleCalendarOccupancyKeys,
 } from '../lib/events-finder-calendar-occupancy.js';
+import { annotateAnthropicEmployeeEvents } from '../lib/events-finder-anthropic.js';
 import {
   buildSkippedEventsIndex,
   deleteEventsFinderMatchingSkipped,
@@ -506,8 +507,8 @@ router.get('/', async (req, res) => {
 
     let raw;
     try {
-      raw = listEventsFinderEvents({ env: process.env });
-      if (!raw.length && batch.length) raw = batch;
+      raw = annotateAnthropicEmployeeEvents(listEventsFinderEvents({ env: process.env }));
+      if (!raw.length && batch.length) raw = annotateAnthropicEmployeeEvents(batch);
     } catch (listErr) {
       console.warn('[events-finder] sqlite list failed:', listErr?.message || listErr);
       raw = batch;

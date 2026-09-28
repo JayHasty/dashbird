@@ -92,6 +92,7 @@ import { startFlightModuleScheduler } from './lib/events-finder-flight-module.js
 import { startTravelBriefDailyRefreshScheduler } from './lib/events-finder-travel-brief.js';
 
 import { startGmailWeeklySummaryScheduler } from './lib/gmail-weekly-summary-synth.js';
+import { startExtremePriorityPoller } from './lib/gmail-extreme-priority.js';
 import eventsFinderTelegramRouter from './routes/events-finder-telegram.js';
 import eventsFinderBigEventsRouter from './routes/events-finder-big-events.js';
 import eventsFinderNotableRouter from './routes/events-finder-notable.js';
@@ -283,6 +284,7 @@ app.listen(port, '0.0.0.0', () => {
   kick(() => startFlightModuleScheduler(), 1185);
   kick(() => startTravelBriefDailyRefreshScheduler(), 1195);
   kick(() => startGmailWeeklySummaryScheduler(), 1250);
+  kick(() => startExtremePriorityPoller(), 1280);
   kick(() => warmGoogleCalendarCache(), 1200);
   kick(() => startCalendarPresenceIndexScheduler(), 1500);
   kick(() => {

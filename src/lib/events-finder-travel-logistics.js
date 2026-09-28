@@ -30,11 +30,18 @@ import { scoreEventTaste } from './events-finder-taste.js';
  * }} LogisticsModuleState
  *
  * @typedef {{
+ *   text: string,
+ *   vikunjaTaskId: string,
+ * }} BeforeTripTask
+ *
+ * @typedef {{
  *   packingList: PackingList | null,
  *   accommodations: string | null,
  *   flightsTransport: string | null,
  *   beforeTrip: string | null,
  *   notes: string | null,
+ *   vikunjaProjectId: number | null,
+ *   beforeTripTasks: BeforeTripTask[],
  *   modules: {
  *     local: { notes: string | null },
  *     flights: LogisticsModuleState,
@@ -59,6 +66,65 @@ function tripField(raw, max = 4000) {
   const s = String(raw ?? '').trim();
   if (!s) return null;
   return s.slice(0, max);
+}
+
+const MAX_TRAVEL_NOTES = 12_000;
+
+/**
+ * @param {unknown} raw
+ * @returns {number | null}
+ */
+function tripProjectId(raw) {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {BeforeTripTask[]}
+ */
+function normalizeBeforeTripTasks(raw) {
+  if (!Array.isArray(raw)) return [];
+  /** @type {BeforeTripTask[]} */
+  const out = [];
+  for (const row of raw.slice(0, 80)) {
+    if (!row || typeof row !== 'object') continue;
+    const r = /** @type {Record<string, unknown>} */ (row);
+    const text = tripField(r.text ?? r.title, 280);
+    const vid = String(r.vikunjaTaskId || r.id || '').trim();
+    if (!text || !/^\d+$/.test(vid)) continue;
+    out.push({ text, vikunjaTaskId: vid });
+  }
+  return out;
+}
+
+/**
+ * Merge legacy stay / flight / module notes into one travel-logistics string.
+ * @param {TripPlanning} tp
+ * @returns {string}
+ */
+export function combinedTravelLogistics(tp) {
+  const parts = [
+    tp?.accommodations,
+    tp?.flightsTransport,
+    tp?.modules?.accommodations?.notes,
+    tp?.modules?.flights?.notes,
+    tp?.modules?.transportation?.notes,
+  ]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  return [...new Set(parts)].join('\n\n');
+}
+
+/**
+ * @param {TripPlanning} tp
+ * @returns {string}
+ */
+export function combinedInRegionNotes(tp) {
+  const parts = [tp?.notes, tp?.modules?.local?.notes]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  return [...new Set(parts)].join('\n\n');
 }
 
 /**
@@ -257,12 +323,14 @@ function normalizeModuleState(raw, opts = {}) {
  */
 export function normalizeTripPlanning(raw, legacyPlanningNotes = null) {
   const r = raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : {};
-  const notes =
-    tripField(r.notes, 4000)
-    || tripField(legacyPlanningNotes, 4000)
-    || tripField(r.planningNotes, 4000);
-  const accommodations = tripField(r.accommodations, 4000);
-  const flightsTransport = tripField(r.flightsTransport, 4000);
+  const notesExplicit = Object.prototype.hasOwnProperty.call(r, 'notes');
+  const notes = notesExplicit
+    ? tripField(r.notes, MAX_TRAVEL_NOTES)
+    : tripField(r.notes, MAX_TRAVEL_NOTES)
+      || tripField(legacyPlanningNotes, MAX_TRAVEL_NOTES)
+      || tripField(r.planningNotes, MAX_TRAVEL_NOTES);
+  const accommodations = tripField(r.accommodations, MAX_TRAVEL_NOTES);
+  const flightsTransport = tripField(r.flightsTransport, MAX_TRAVEL_NOTES);
   const mods =
     r.modules && typeof r.modules === 'object'
       ? /** @type {Record<string, unknown>} */ (r.modules)
@@ -275,8 +343,10 @@ export function normalizeTripPlanning(raw, legacyPlanningNotes = null) {
     packingList: normalizePackingList(r.packingList),
     accommodations,
     flightsTransport,
-    beforeTrip: tripField(r.beforeTrip, 4000),
+    beforeTrip: tripField(r.beforeTrip, MAX_TRAVEL_NOTES),
     notes,
+    vikunjaProjectId: tripProjectId(r.vikunjaProjectId ?? r.vikunja_project_id),
+    beforeTripTasks: normalizeBeforeTripTasks(r.beforeTripTasks),
     modules: {
       local: { notes: tripField(localMod.notes, 4000) },
       flights: normalizeModuleState(mods.flights),
@@ -592,10 +662,97 @@ export function airportTransportOptions(airport, event, opts = {}) {
  * @param {string | null | undefined} iso
  * @returns {string} YYYY-MM-DD or empty
  */
-function ymd(iso) {
+export function eventDateYmd(iso) {
   const d = Date.parse(String(iso || ''));
   if (!Number.isFinite(d)) return '';
   return new Date(d).toISOString().slice(0, 10);
+}
+
+/** @deprecated use eventDateYmd */
+function ymd(iso) {
+  return eventDateYmd(iso);
+}
+
+/**
+ * Region-specific deep links for the logistics side rail.
+ * @param {object} event
+ * @returns {{
+ *   city: string,
+ *   news: { label: string, detail: string, url: string }[],
+ *   alerts: { label: string, detail: string, url: string }[],
+ *   weather: { label: string, detail: string, url: string }[],
+ *   travelEvents: { label: string, detail: string, url: string }[],
+ * }}
+ */
+export function buildRegionIntelLinks(event) {
+  const city = String(event?.city || event?.venue || '').trim() || 'destination';
+  const start = eventDateYmd(event?.start);
+  const end = eventDateYmd(event?.end) || start;
+  const when =
+    start && end && start !== end ? `${start} to ${end}` : start || 'upcoming';
+  const qCity = encodeURIComponent(city);
+  const qNews = encodeURIComponent(`${city} local news ${when}`);
+  const qAlerts = encodeURIComponent(`${city} travel alert emergency advisory ${when}`);
+  const qWeather = encodeURIComponent(start ? `weather ${city} ${start}` : `weather ${city}`);
+  const qEvents = encodeURIComponent(
+    `${city} festival OR concert OR marathon OR "super bowl" OR summit OR election OR protest OR parade ${when}`,
+  );
+  const qBuild = encodeURIComponent(
+    `${city} road construction OR street closure OR transit strike OR airport delay ${when}`,
+  );
+  const lat = Number(event?.lat);
+  const lon = Number(event?.lon);
+  const nwsPoint =
+    Number.isFinite(lat) && Number.isFinite(lon)
+      ? `https://forecast.weather.gov/MapClick.php?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lon))}`
+      : `https://www.weather.gov/`;
+
+  return {
+    city,
+    news: [
+      {
+        label: `Google News · ${city}`,
+        detail: 'Local and regional headlines.',
+        url: `https://news.google.com/search?q=${qCity}&hl=en-US&gl=US&ceid=US:en`,
+      },
+      {
+        label: 'News around your dates',
+        detail: `Coverage near ${when}.`,
+        url: `https://www.google.com/search?q=${qNews}`,
+      },
+    ],
+    alerts: [
+      {
+        label: 'NWS forecast & alerts',
+        detail: 'Official US weather warnings for this point.',
+        url: nwsPoint,
+      },
+      {
+        label: `Travel alerts · ${city}`,
+        detail: 'Emergencies, advisories, and disruptions.',
+        url: `https://www.google.com/search?q=${qAlerts}`,
+      },
+    ],
+    weather: [
+      {
+        label: `Forecast · ${city}`,
+        detail: start ? `Stay window ${when}.` : 'Check the forecast before packing.',
+        url: `https://www.google.com/search?q=${qWeather}`,
+      },
+    ],
+    travelEvents: [
+      {
+        label: 'Festivals, games, summits',
+        detail: 'Large events that can clog hotels and transit.',
+        url: `https://www.google.com/search?q=${qEvents}`,
+      },
+      {
+        label: 'Construction & closures',
+        detail: 'Road work, strikes, and airport delays.',
+        url: `https://www.google.com/search?q=${qBuild}`,
+      },
+    ],
+  };
 }
 
 /**
@@ -1374,6 +1531,45 @@ export async function fetchEventLogisticsWeather(lat, lon, event) {
 }
 
 /**
+ * Active NWS alerts for a US lat/lon (empty outside coverage).
+ * @param {number} lat
+ * @param {number} lon
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {Promise<{ event: string, headline: string }[]>}
+ */
+export async function fetchNwsAlerts(lat, lon, env = process.env) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+  if (lat < 15 || lat > 72 || lon < -180 || lon > -60) return [];
+  const ua =
+    String(env.NWS_USER_AGENT || '').trim()
+    || 'Dashbird/1.0 (dashbird dashboard; events travel brief)';
+  try {
+    const url = `https://api.weather.gov/alerts/active?point=${encodeURIComponent(`${lat},${lon}`)}`;
+    const r = await fetch(url, {
+      headers: { 'User-Agent': ua, Accept: 'application/geo+json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) return [];
+    const j = await r.json();
+    const features = Array.isArray(j?.features) ? j.features : [];
+    /** @type {{ event: string, headline: string }[]} */
+    const out = [];
+    for (const f of features.slice(0, 8)) {
+      const p = f?.properties || {};
+      const event = String(p.event || '').trim();
+      if (!event) continue;
+      out.push({
+        event: event.slice(0, 120),
+        headline: String(p.headline || '').trim().slice(0, 280),
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Full logistics payload for one event.
  * When the event is within {@link EVENT_WEATHER_LEAD_DAYS} days, includes a `weather` module.
  * @param {object} event
@@ -1412,25 +1608,27 @@ export async function buildEventLogistics(event, catalog = [], opts = {}) {
   const city = String(located.city || '').trim();
   const includeFlightLinks = opts.includeFlightLinks === true;
 
-  /** @type {Awaited<ReturnType<typeof fetchEventLogisticsWeather>> | null} */
-  let weather = null;
-  if (isEventWeatherModuleActive(located, now)) {
-    if (coords) {
-      weather = await fetchEventLogisticsWeather(coords.lat, coords.lon, located);
-    } else {
-      const startYmd = ymd(located?.start);
-      const place = city || 'destination';
-      weather = {
-        ok: false,
-        daysUntil: daysUntilEventStart(located?.start, now),
-        city: place,
-        reason: 'no_coords',
-        moreUrl: `https://www.google.com/search?q=${encodeURIComponent(
-          startYmd ? `weather ${place} ${startYmd}` : `weather ${place}`,
-        )}`,
-      };
-    }
+  /** @type {Awaited<ReturnType<typeof fetchEventLogisticsWeather>>} */
+  let weather;
+  if (coords) {
+    weather = await fetchEventLogisticsWeather(coords.lat, coords.lon, located);
+  } else {
+    const startYmd = ymd(located?.start);
+    const place = city || 'destination';
+    weather = {
+      ok: false,
+      daysUntil: daysUntilEventStart(located?.start, now),
+      city: place,
+      reason: 'no_coords',
+      moreUrl: `https://www.google.com/search?q=${encodeURIComponent(
+        startYmd ? `weather ${place} ${startYmd}` : `weather ${place}`,
+      )}`,
+    };
   }
+  const nwsAlerts = coords
+    ? await fetchNwsAlerts(coords.lat, coords.lon)
+    : [];
+  const regionIntel = buildRegionIntelLinks(located);
 
   return {
     ok: true,
@@ -1484,5 +1682,7 @@ export async function buildEventLogistics(event, catalog = [], opts = {}) {
     tripPlanning,
     planningNotes: tripPlanning.notes || event?.planningNotes || null,
     weather,
+    nwsAlerts,
+    regionIntel,
   };
 }

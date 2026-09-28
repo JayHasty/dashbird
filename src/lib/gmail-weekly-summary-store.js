@@ -94,6 +94,7 @@ export function looksLikeVerificationSummaryItem(blob) {
  * LLM triage gates the digest prompt; this still drops events, OTP, and guide Never-show.
  */
 export function shouldExcludeDailySummaryItem(item, guideMarkdown = '') {
+  if (String(item?.priority || '').toLowerCase() === 'extreme') return '';
   const blob = [
     item?.company,
     item?.title,
@@ -134,7 +135,8 @@ export function shouldExcludeDailySummaryItem(item, guideMarkdown = '') {
  *   mailboxes: string[],
  *   sources: GmailWeeklySource[],
  *   status: 'open' | 'dismissed' | 'tasked',
- *   pinned: boolean,
+   *   priority?: 'extreme' | null,
+   *   pinned: boolean,
  *   unpinDeleteAt: string | null,
  *   createdAt: string,
  *   updatedAt: string,
@@ -573,6 +575,7 @@ function normalizeItem(raw) {
     || itemFingerprint({ title, company, sources });
   const pinned = Boolean(raw.pinned);
   const unpinDeleteAt = pinned ? null : asIsoOrNull(raw.unpinDeleteAt);
+  const priority = String(raw.priority || '').toLowerCase() === 'extreme' ? 'extreme' : null;
   return {
     id: String(raw.id || '').trim() || randomUUID(),
     title,
@@ -581,6 +584,7 @@ function normalizeItem(raw) {
     deadline: asIsoOrNull(raw.deadline),
     deadlineSource,
     needsReply: Boolean(raw.needsReply),
+    priority,
     mailboxes,
     sources,
     status,
@@ -868,6 +872,7 @@ export function mergeSynthesizedDigest(prev, synth, opts = {}) {
       deadlineSource:
         candidate.deadlineSource !== 'none' ? candidate.deadlineSource : existing.deadlineSource,
       needsReply: candidate.needsReply || existing.needsReply,
+      priority: candidate.priority || existing.priority || null,
       mailboxes: sources.length
         ? [...new Set(sources.map((s) => String(s.email || '').toLowerCase()).filter(Boolean))]
         : [...new Set([...(existing.mailboxes || []), ...(candidate.mailboxes || [])])],

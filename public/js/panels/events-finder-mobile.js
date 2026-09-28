@@ -1274,8 +1274,15 @@ export function mountEventsFinderMobile(root) {
    * @param {unknown} notes
    * @returns {boolean}
    */
-  function hasLogisticsNotes(notes) {
-    return Boolean(String(notes || '').trim());
+  function hasLogisticsNotes(notes, tripPlanning = null) {
+    if (String(notes || '').trim()) return true;
+    if (tripPlanning && typeof tripPlanning === 'object') {
+      const tp = /** @type {Record<string, unknown>} */ (tripPlanning);
+      return ['accommodations', 'flightsTransport', 'beforeTrip', 'notes'].some((k) =>
+        String(tp[k] || '').trim(),
+      );
+    }
+    return false;
   }
 
   /**
@@ -1284,7 +1291,7 @@ export function mountEventsFinderMobile(root) {
    * @returns {boolean}
    */
   function confirmSkipDespiteLogistics(item) {
-    if (!hasLogisticsNotes(item?.planningNotes)) return true;
+    if (!hasLogisticsNotes(item?.planningNotes, item?.tripPlanning)) return true;
     return window.confirm(
       'This event has logistics notes saved (flights, lodging, packing, etc.). Skip it anyway?',
     );
@@ -1388,6 +1395,13 @@ export function mountEventsFinderMobile(root) {
     const slug = String(item?.slug || '').trim();
     if (!slug) return;
 
+    const tp = item.tripPlanning && typeof item.tripPlanning === 'object' ? item.tripPlanning : {};
+    const draft = {
+      beforeTrip: String(tp.beforeTrip || ''),
+      travelLogistics: String(tp.accommodations || tp.flightsTransport || '').trim(),
+      inRegion: String(tp.notes || item.planningNotes || '').trim(),
+    };
+
     const backdrop = document.createElement('div');
     backdrop.className = 'events-finder__correct-backdrop';
     const panel = document.createElement('div');
@@ -1397,21 +1411,97 @@ export function mountEventsFinderMobile(root) {
 
     const title = document.createElement('h3');
     title.className = 'events-finder__correct-title';
-    title.textContent = 'Logistics notes';
+    title.textContent = 'Planning & logistics';
     const hint = document.createElement('p');
     hint.className = 'events-finder__correct-hint muted';
-    hint.textContent = `${item.title || item.query || 'Producer'} — accommodations, flights, packing, etc. Autosaves.`;
-
-    const ta = document.createElement('textarea');
-    ta.className = 'events-finder__correct-input';
-    ta.rows = 8;
-    ta.placeholder = 'Flights…\nLodging…\nOther…';
-    ta.value = item.planningNotes ? String(item.planningNotes) : '';
-    ta.autocomplete = 'off';
+    hint.textContent = `${item.title || item.query || 'Producer'} — saves immediately.`;
 
     const status = document.createElement('p');
     status.className = 'events-finder__big-events-msg muted';
     status.hidden = true;
+
+    const fields = [
+      { key: 'beforeTrip', label: 'Things to do before leaving', rows: 4, placeholder: 'One item per line…' },
+      { key: 'travelLogistics', label: 'Accommodations and travel logistics', rows: 5, placeholder: 'Flights, hotels, bag limits…' },
+      { key: 'inRegion', label: 'In-region notes', rows: 4, placeholder: 'Stuff to do…' },
+    ];
+
+    /** @type {ReturnType<typeof bindLogisticsAutosave>[]} */
+    const savers = [];
+
+    async function saveTrip() {
+      const res = await fetch(`/api/events-finder/big-events/${encodeURIComponent(slug)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tripPlanning: {
+            beforeTrip: draft.beforeTrip.trim() || null,
+            accommodations: draft.travelLogistics.trim() || null,
+            notes: draft.inRegion.trim() || null,
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      item.tripPlanning = data.item?.tripPlanning || item.tripPlanning;
+      item.planningNotes = data.item?.planningNotes ?? item.planningNotes;
+    }
+
+    panel.append(title, hint);
+    for (const field of fields) {
+      const lab = document.createElement('label');
+      lab.className = 'events-finder__notable-field events-finder__notable-field--wide';
+      const span = document.createElement('span');
+      span.className = 'events-finder__notable-label';
+      span.textContent = field.label;
+      const ta = document.createElement('textarea');
+      ta.className = 'events-finder__correct-input';
+      ta.rows = field.rows;
+      ta.placeholder = field.placeholder;
+      ta.value = draft[field.key];
+      ta.autocomplete = 'off';
+      lab.append(span, ta);
+      panel.append(lab);
+      savers.push(bindLogisticsAutosave(ta, {
+        statusEl: status,
+        save: async (text) => {
+          draft[field.key] = text;
+          await saveTrip();
+        },
+      }));
+    }
+
+    const scrapeBtn = document.createElement('button');
+    scrapeBtn.type = 'button';
+    scrapeBtn.className = 'events-finder__big-events-again';
+    scrapeBtn.textContent = 'Scan inbox for reservations';
+    scrapeBtn.addEventListener('click', async () => {
+      scrapeBtn.disabled = true;
+      scrapeBtn.textContent = 'Scanning…';
+      try {
+        const r = await fetch(`/api/events-finder/big-events/${encodeURIComponent(slug)}/reservation-scrape`, {
+          method: 'POST',
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+        if (j.travelLogistics) draft.travelLogistics = String(j.travelLogistics);
+        if (j.inRegionNotes) {
+          draft.inRegion = draft.inRegion
+            ? `${draft.inRegion.trim()}\n\n${j.inRegionNotes}`
+            : String(j.inRegionNotes);
+        }
+        await saveTrip();
+        backdrop.remove();
+        openProducerLogisticsDialog(item);
+      } catch (e) {
+        status.hidden = false;
+        status.textContent = String(e?.message || e);
+        status.className = 'events-finder__big-events-msg events-finder__big-events-msg--error';
+      } finally {
+        scrapeBtn.disabled = false;
+        scrapeBtn.textContent = 'Scan inbox for reservations';
+      }
+    });
 
     const actions = document.createElement('div');
     actions.className = 'events-finder__correct-actions';
@@ -1419,23 +1509,16 @@ export function mountEventsFinderMobile(root) {
     done.type = 'button';
     done.className = 'events-finder__big-events-confirm';
     done.textContent = 'Done';
-    actions.append(done);
-    panel.append(title, hint, ta, status, actions);
+    actions.append(scrapeBtn, done);
+    panel.append(status, actions);
     backdrop.append(panel);
     document.body.append(backdrop);
-    ta.focus();
-
-    const autosave = bindLogisticsAutosave(ta, {
-      statusEl: status,
-      save: async (text) => {
-        await saveBigEventPlanningNotes(slug, text);
-        item.planningNotes = String(text || '').trim() || null;
-      },
-    });
 
     const close = async () => {
-      await autosave.flush();
-      autosave.destroy();
+      for (const s of savers) {
+        await s.flush();
+        s.destroy();
+      }
       backdrop.remove();
       void refreshBigEventsFromStore();
       void loadEvents();
